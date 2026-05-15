@@ -1,0 +1,39 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.*
+
+# Package managers
+.pnpm-store
+
+# Build / cache
+.turbo
+dist
+.next
+out
+build
+*.tsbuildinfo
+
+# Test & coverage
+coverage
+
+# Logs & debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment (keep checked-in examples)
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE (uncomment if you do not commit editor settings)
+# .idea
+# .vscode

@@ -1,0 +1,126 @@
+// See docs/ARCHITECTURE.md — multi-tenant core schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id               String  @id @default(uuid())
+  name             String
+  activeTranslator String  @default("gemini")
+  activeScorer     String  @default("langdock")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  users            User[]
+  jobs            Job[]
+  jobBatches      JobBatch[]
+  promptTemplates PromptTemplate[]
+  termPreferences TermPreference[]
+
+  @@index([name])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  tenantId  String
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+enum JobStatus {
+  pending
+  extracting
+  chunking
+  translating
+  scoring
+  regenerating
+  completed
+  failed
+}
+
+/// Parent translation job. Chunks (BullMQ) are modeled as `JobBatch`.
+model Job {
+  id                   String    @id @default(uuid())
+  tenantId             String
+  status               JobStatus @default(pending)
+  fileKey              String
+  sourceLang           String
+  targetLangs          String[]
+  batchSize            Int       @default(200)
+  minTranslationScore  Float? // tenant/env default when null; judge threshold
+  maxBatchRetries      Int?      @default(3)
+  progress             Float     @default(0) // 0–100, aggregate
+  errorMessage         String?
+  resultUrls           String[]  @default([])
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  tenant  Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  batches JobBatch[]
+
+  @@index([tenantId, status])
+  @@index([createdAt])
+}
+
+/// One BullMQ (or worker) unit for 120k+ string jobs — diagnostics and retries.
+model JobBatch {
+  id            String  @id @default(uuid())
+  jobId         String
+  job           Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  tenantId      String
+  batchIndex    Int
+  lastErrorCode String? // e.g. PLACEHOLDER_MISMATCH, SCORE_LOW, PROVIDER_429
+  attempt       Int     @default(0)
+  judgeScore    Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, batchIndex])
+  @@index([tenantId, jobId])
+}
+
+/// System + user layers per (tenant, source, target) — see docs/ARCHITECTURE.md
+model PromptTemplate {
+  id          String   @id @default(uuid())
+  tenantId    String
+  sourceLang  String
+  targetLang  String
+  systemText  String   @default("") @db.Text
+  userText    String   @default("") @db.Text
+  version     Int      @default(1)
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sourceLang, targetLang])
+  @@index([tenantId])
+}
+
+/// Term preferences: one preferred target wording for POS (synonym disambiguation)
+model TermPreference {
+  id              String  @id @default(uuid())
+  tenantId        String
+  sourceLang      String
+  targetLang      String
+  sourceTerm      String
+  preferredTarget String  @db.Text
+  notes           String? @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, sourceLang, targetLang])
+  @@index([tenantId, sourceTerm])
+}

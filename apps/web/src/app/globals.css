@@ -1,0 +1,153 @@
+@import "@fontsource-variable/manrope/wght.css";
+@import "@fontsource-variable/syne/wght.css";
+@import "tailwindcss";
+
+/*
+ * Aptos Translate — control-room / POS-localization aesthetic.
+ * Warm brass on cool graphite; depth without purple gradients.
+ */
+:root {
+  --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Syne Variable", ui-serif, serif;
+  --bg0: #030406;
+  --bg1: #0a0c10;
+  --bg-elevated: #0f1218;
+  --fg: #eceef2;
+  --fg-soft: #c5c9d3;
+  --muted: #7a808d;
+  --muted-deep: #525866;
+  --edge: #1f242e;
+  --edge-bright: #2e3544;
+  --panel: #0c0e14;
+  --panel-hover: #12151d;
+  --accent: #d4af5c;
+  --accent-muted: #9a7b3c;
+  --accent-dim: rgba(212, 175, 92, 0.1);
+  --accent-glow: rgba(212, 175, 92, 0.22);
+  --ring: #5c6578;
+  --danger: #e85d5d;
+  --ok: #5cd49a;
+}
+
+@theme inline {
+  --color-background: var(--bg0);
+  --color-foreground: var(--fg);
+  --color-muted: var(--muted);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  position: relative;
+  isolation: isolate;
+  color: var(--fg);
+  background-color: var(--bg0);
+  background-image:
+    radial-gradient(ellipse 140% 90% at 0% -20%, rgba(212, 175, 92, 0.07) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(45, 74, 110, 0.12) 0%, transparent 42%),
+    linear-gradient(165deg, var(--bg0) 0%, var(--bg1) 45%, #06080c 100%);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* Technical grid — very low contrast */
+body::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.35;
+  background-image: linear-gradient(var(--edge) 1px, transparent 1px),
+    linear-gradient(90deg, var(--edge) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 0%, black 20%, transparent 75%);
+}
+
+html::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  opacity: 0.55;
+}
+
+::selection {
+  background: rgba(212, 175, 92, 0.28);
+  color: var(--fg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-in {
+    animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-in-delay-1 {
+    animation-delay: 0.06s;
+  }
+
+  .animate-in-delay-2 {
+    animation-delay: 0.12s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .animate-in-delay-1,
+  .animate-in-delay-2 {
+    animation: none;
+  }
+}
+
+/* Skeleton shimmer for loading panels */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.04),
+    transparent
+  );
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shine::after {
+    animation: none;
+  }
+}
