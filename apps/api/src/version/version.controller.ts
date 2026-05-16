@@ -9,10 +9,7 @@ export class VersionController {
   constructor(private readonly version: VersionService) {}
 
   @Get()
-  @ApiOperation({
-    summary:
-      'Deployed version: package version, git commit, optional message, full changelog (markdown), build metadata',
-  })
+  @ApiOperation({ summary: 'Build metadata for ops & support' })
   getVersion() {
     return this.version.getApiBuild();
   }

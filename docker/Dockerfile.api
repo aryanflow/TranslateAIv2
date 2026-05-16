@@ -14,15 +14,6 @@ RUN pnpm --filter api exec prisma generate
 RUN pnpm --filter api run build
 
 WORKDIR /app/apps/api
-
-# Injected at image build time (e.g. `docker build --build-arg GIT_SHA=$(git rev-parse HEAD) ...`)
-ARG GIT_SHA=
-ARG BUILD_TIME=
-ARG GIT_COMMIT_MESSAGE=
-ENV GIT_SHA=$GIT_SHA \
-    BUILD_TIME=$BUILD_TIME \
-    GIT_COMMIT_MESSAGE=$GIT_COMMIT_MESSAGE
-
 ENV NODE_ENV=production
 EXPOSE 3001
 CMD ["node", "dist/main.js"]

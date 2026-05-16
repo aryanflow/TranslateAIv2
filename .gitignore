@@ -1,39 +1,50 @@
 # Dependencies
-node_modules
-.pnp
-.pnp.*
-
-# Package managers
-.pnpm-store
+node_modules/
+.pnpm-store/
 
 # Build / cache
-.turbo
-dist
-.next
-out
-build
+dist/
+.next/
+out/
+build/
+.turbo/
 *.tsbuildinfo
 
 # Test & coverage
-coverage
+coverage/
+.nyc_output/
 
 # Logs & debug
 *.log
 npm-debug.log*
+pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
 
-# Environment (keep checked-in examples)
+# Env & secrets (keep *.example tracked)
 .env
 .env.*
 !.env.example
-!**/.env.example
+apps/api/.env
+apps/api/.env.*
+!apps/api/.env.example
+apps/web/.env
+apps/web/.env.*
+!apps/web/.env.example
+apps/web/.env.local
 
-# OS
+# Keys & certs
+*.pem
+*.key
+
+# OS / editor
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# IDE (uncomment if you do not commit editor settings)
-# .idea
-# .vscode
+# Deploy / local tooling
+.vercel/
+*.local
