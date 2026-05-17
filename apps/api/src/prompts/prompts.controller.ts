@@ -12,11 +12,17 @@ import { TenantGuard } from '../common/guards/tenant.guard';
 import { TenantId } from '../common/decorators/tenant-id.decorator';
 
 class PutPromptsBodyDto {
-  @ApiProperty({ description: 'System (developer) prompt body' })
+  @ApiProperty({
+    description:
+      'Optional tenant system overlay (after the shipped enterprise localization prompt)',
+  })
   @IsString()
   systemText!: string;
 
-  @ApiProperty({ description: 'User (per-pair) prompt template' })
+  @ApiProperty({
+    description:
+      'Custom user-layer template — sections [A]/[B]/[C]; supports {{glossary_block}}, {{terminology_reference}}, {{source_lang}}, {{target_lang}}, {{target_language_name}}',
+  })
   @IsString()
   userText!: string;
 
@@ -35,6 +41,15 @@ class PutPromptsBodyDto {
 @ApiSecurity('tenant-id')
 export class PromptsController {
   constructor(private readonly prompts: PromptsService) {}
+
+  @Get('baseline')
+  @ApiOperation({
+    summary:
+      'Shipped localization engine system prompt + default DB templates (read-only reference)',
+  })
+  getBaseline() {
+    return this.prompts.getProductBaseline();
+  }
 
   @Get(':sourceLang/:targetLang')
   @ApiOperation({

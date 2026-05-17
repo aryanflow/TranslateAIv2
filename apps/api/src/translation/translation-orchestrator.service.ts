@@ -15,7 +15,10 @@ import {
   DEFAULT_BEDROCK_SCORING_MODEL_ID,
   DEFAULT_BEDROCK_TRANSLATION_MODEL_ID,
 } from '../config/bedrock-defaults';
-import { substitutePromptVars } from '../llm/prompt-builder';
+import {
+  substitutePromptVars,
+  formatTerminologyReferenceBlock,
+} from '../llm/prompt-builder';
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -208,19 +211,16 @@ export class TranslationOrchestratorService {
           job.sourceLang,
           targetLang,
         );
+        const terminologyReference = formatTerminologyReferenceBlock(langCfg);
         const userTemplateFilled = substitutePromptVars(tmpl.userText, {
           glossary_block: glossaryBlock,
+          terminology_reference: terminologyReference,
           source_lang: job.sourceLang,
           target_lang: targetLang,
           target_language_name: langCfg.name,
         });
 
-        const authorizedReference = [
-          '=== Term preferences (authoritative JSON: src → tgt) ===',
-          glossaryBlock,
-          '=== Rendered user-layer template (administrator-defined; not ad-hoc chat) ===',
-          userTemplateFilled,
-        ].join('\n');
+        const sourceCfg = LANG_CONFIG[job.sourceLang];
 
         const ordered: string[] = [];
         let offset = 0;
@@ -258,8 +258,11 @@ export class TranslationOrchestratorService {
               batch,
               targetLang,
               {
-                authorizedReference,
                 administratorSystemPrompt: tmpl.systemText,
+                administratorUserTemplate: userTemplateFilled,
+                batchSourceLang: job.sourceLang,
+                batchSourceLangDisplayName:
+                  sourceCfg?.name ?? job.sourceLang,
                 batchStringIds: extracted.stringIds.slice(
                   offset,
                   offset + batch.length,

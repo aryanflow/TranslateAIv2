@@ -62,11 +62,16 @@ export class BedrockTranslatorService {
       src: text,
     }));
 
-    const comprehensive = buildTranslationPrompt(
+    const adminUser = ctx?.administratorUserTemplate?.trim();
+    const batchSection = buildTranslationPrompt(
       texts,
       language,
       examples,
       additional,
+      {
+        sourceLangCode: ctx?.batchSourceLang,
+        sourceLangDisplayName: ctx?.batchSourceLangDisplayName,
+      },
     );
     const jsonStructure = `
 
@@ -90,7 +95,9 @@ ${JSON.stringify(inputItems)}
 Return ONLY the JSON above.
 `;
 
-    const userContent = comprehensive + jsonStructure;
+    const userContent = [adminUser, batchSection, jsonStructure]
+      .filter((s) => s && s.length > 0)
+      .join('\n\n');
 
     const envSystem =
       this.config.get<string>('BEDROCK_TRANSLATOR_SYSTEM_OVERLAY', '')?.trim();
@@ -98,7 +105,15 @@ Return ONLY the JSON above.
     const systemParts = [
       DEFAULT_BEDROCK_TRANSLATOR_SYSTEM,
       envSystem ? envSystem : null,
-      admin ? `Tenant administrator instructions (fixed templates):\n${admin}` : null,
+      admin
+        ? [
+            '────────────────────────────────────────────────────────────',
+            'OPTIONAL TENANT SYSTEM OVERLAY',
+            '(Appended policy after the shipped localization engine system prompt.)',
+            '────────────────────────────────────────────────────────────',
+            admin,
+          ].join('\n')
+        : null,
     ].filter(Boolean);
 
     const systemPrompt = systemParts.join('\n\n');

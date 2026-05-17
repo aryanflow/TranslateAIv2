@@ -9,8 +9,9 @@ export default function PromptsPage() {
         title="Prompts"
         description={
           <>
-            One row per <span className="text-[var(--fg-soft)]">source → target</span> pair. System layer holds
-            non‑negotiable POS rules; user layer carries tone and variables.
+            Ship a baseline enterprise retail/POS system prompt from the API. Saved rows add an optional
+            system overlay plus a [A]/[B]/[C] user-style template merged into every batch —
+            glossary and terminology placeholders are hydrated by jobs.
           </>
         }
       />

@@ -73,25 +73,9 @@ export class BedrockScorerService {
       tagsForPrompt,
     );
 
-    const jsonStructure = `
-
-Return ONLY the following compact JSON structure:
-{
-  "score_res": [
-    {"sid": 1, "score": 8.5, "fb": "Better option: ...", "ix": 0},
-    {"sid": 2, "score": 9.0, "fb": "Perfect", "ix": 1}
-  ]
-}
-
-Rules:
-- Output exactly ${scoringItems.length} assessments.
-- Each MUST include integer "sid" copied exactly from input (catalog scope).
-- "ix" is batch position only: 0 for the first row, 1 for the second — never set ix equal to sid.
-- Feedback must be <= 180 chars; if score < 10.0 include "Better option: <correct>".
-- JSON only; no extra text.
-`;
-
-    const structuredPrompt = comprehensive + '\n\n' + jsonStructure;
+    const structuredPrompt =
+      comprehensive +
+      `\n\nINPUT_ROWS_WITH_IDS (copy each "sid" into the matching score_res object):\n${JSON.stringify(scoringItems)}\n\nReminder: Produce exactly ${scoringItems.length} objects in score_res.`;
     const overlay = this.config
       .get<string>('BEDROCK_SCORER_SYSTEM_OVERLAY', '')
       ?.trim();
@@ -131,7 +115,7 @@ Rules:
           }
         }
         scores.push(Math.round(scoreVal * 10) / 10);
-        feedback.push(String(item.fb ?? 'Quality assessment unavailable'));
+        feedback.push(item.fb ?? 'Quality assessment unavailable');
       }
 
       this.validateScoringAlignment(originals, scores, feedback, ids, parsedScores);
@@ -146,6 +130,41 @@ Rules:
     }
   }
 
+  private flattenJudgeFeedback(a: Record<string, unknown>): string {
+    const legacyFb =
+      typeof a.fb === 'string' && a.fb.trim().length > 0
+        ? a.fb.trim()
+        : '';
+    if (legacyFb) return legacyFb.slice(0, 4000);
+    const feedback =
+      typeof a.feedback === 'string' ? a.feedback.trim() : '';
+    let scoreNum = NaN;
+    if (typeof a.score === 'number') scoreNum = a.score;
+    else if (typeof a.score === 'string') scoreNum = Number(a.score);
+    if (
+      !Number.isNaN(scoreNum) &&
+      scoreNum >= 10 &&
+      /^perfect\s*$/i.test(feedback)
+    ) {
+      return 'Perfect';
+    }
+    const parts: string[] = [];
+    if (feedback) parts.push(feedback);
+    const better =
+      typeof a.better_option === 'string' && a.better_option.trim().length > 0
+        ? a.better_option.trim()
+        : '';
+    if (better) parts.push(`Better option: ${better}`);
+    const rat =
+      typeof a.rationale === 'string' && a.rationale.trim().length > 0
+        ? a.rationale.trim()
+        : '';
+    if (rat) parts.push(rat);
+    const out =
+      parts.length > 0 ? parts.join(' | ') : 'Quality assessment unavailable';
+    return out.slice(0, 4000);
+  }
+
   private parseScoringResponse(raw: string): {
     bySid: Map<number, { sid?: number; score?: number; fb?: string; ix?: number }>;
     byLegacyId: Map<
@@ -153,17 +172,21 @@ Rules:
       { id?: string; score?: number; fb?: string; ix?: number }
     >;
   } {
+    type RawRow = {
+      sid?: number;
+      id?: string | number;
+      score?: number;
+      fb?: string;
+      feedback?: string;
+      ix?: number;
+      index?: number;
+      better_option?: string | null;
+      rationale?: string | null;
+    };
+
     try {
       const jsonStr = extractJsonObject(raw);
-      const data = JSON.parse(jsonStr) as {
-        score_res?: Array<{
-          sid?: number;
-          id?: string;
-          score?: number;
-          fb?: string;
-          ix?: number;
-        }>;
-      };
+      const data = JSON.parse(jsonStr) as { score_res?: RawRow[] };
       const bySid = new Map<
         number,
         { sid?: number; score?: number; fb?: string; ix?: number }
@@ -172,11 +195,42 @@ Rules:
         string,
         { id?: string; score?: number; fb?: string; ix?: number }
       >();
-      for (const a of data.score_res ?? []) {
-        if (a.sid != null && !Number.isNaN(Number(a.sid))) {
-          bySid.set(Number(a.sid), a);
+
+      const rows = Array.isArray(data.score_res)
+        ? data.score_res
+        : Array.isArray((data as { assessments?: RawRow[] }).assessments)
+          ? (data as { assessments: RawRow[] }).assessments
+          : [];
+
+      for (const row of rows) {
+        const a = row as Record<string, unknown>;
+        const fb = this.flattenJudgeFeedback(a);
+
+        let sidParsed: number | undefined;
+        if (row.sid != null && !Number.isNaN(Number(row.sid))) {
+          sidParsed = Number(row.sid);
+        } else if (row.id != null && !Number.isNaN(Number(row.id))) {
+          sidParsed = Number(row.id);
         }
-        if (a.id) byLegacyId.set(String(a.id), a);
+
+        const ixAligned =
+          row.ix ??
+          row.index ??
+          undefined;
+
+        const merged = {
+          sid: sidParsed,
+          score: row.score,
+          fb,
+          ix: ixAligned,
+        };
+
+        if (sidParsed != null) {
+          bySid.set(sidParsed, merged);
+        }
+        if (row.id != null && row.id !== '') {
+          byLegacyId.set(String(row.id), merged);
+        }
       }
       return { bySid, byLegacyId };
     } catch {
@@ -204,7 +258,14 @@ Rules:
       const sid = ids[i];
       const fromSid = parsed.bySid.get(sid);
       const item = fromSid ?? parsed.byLegacyId.get(`s${i}`);
-      if (!fromSid && item?.ix !== undefined && item.ix !== i) {
+      const itemIx = item?.ix;
+      const itemIndex = (item as { index?: number } | undefined)?.index;
+      const resolvedIx = itemIx ?? itemIndex;
+      if (
+        !fromSid &&
+        resolvedIx !== undefined &&
+        resolvedIx !== i
+      ) {
         throw new Error(
           `Scoring index alignment failed at batch index ${i} (legacy id s${i})`,
         );

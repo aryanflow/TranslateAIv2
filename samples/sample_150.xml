@@ -1,0 +1,1077 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DataSet>
+  <xs:schema id="ResourceToBeTranslated" xmlns="" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" xmlns:msprop="urn:schemas-microsoft-com:xml-msprop">
+    <xs:element name="ResourceToBeTranslated" msdata:IsDataSet="true" msdata:UseCurrentLocale="true" msprop:TargetTableName="nsb_resource.resource_detail" msprop:OriginalCulture="en-US" msprop:TargetCulture="ko-KO">
+      <xs:complexType>
+        <xs:choice minOccurs="0" maxOccurs="unbounded">
+          <xs:element name="LanguageResources">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element name="resource_id" type="xs:decimal" minOccurs="0" />
+                <xs:element name="namespace_name" type="xs:string" minOccurs="0" />
+                <xs:element name="resource_type" type="xs:string" minOccurs="0" />
+                <xs:element name="original_string" type="xs:string" minOccurs="0" />
+                <xs:element name="translated_string" type="xs:string" minOccurs="0" />
+                <xs:element name="resource_comment" type="xs:string" minOccurs="0" />
+              </xs:sequence>
+            </xs:complexType>
+          </xs:element>
+        </xs:choice>
+      </xs:complexType>
+    </xs:element>
+  </xs:schema>
+  <diffgr:diffgram xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" xmlns:diffgr="urn:schemas-microsoft-com:xml-diffgram-v1">
+    <ResourceToBeTranslated>
+      <LanguageResources diffgr:id="LanguageResources1" msdata:rowOrder="0">
+        <resource_id>21</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>Operation failed</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources2" msdata:rowOrder="1">
+        <resource_id>22</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>DialogTitle</resource_type>
+        <original_string>Confirmation</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources3" msdata:rowOrder="2">
+        <resource_id>23</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>System Message 139</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources4" msdata:rowOrder="3">
+        <resource_id>24</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>NotificationMessage</resource_type>
+        <original_string>System update available</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources5" msdata:rowOrder="4">
+        <resource_id>25</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>DialogTitle</resource_type>
+        <original_string>Warning</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources6" msdata:rowOrder="5">
+        <resource_id>26</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>GroupBoxText</resource_type>
+        <original_string>System Message 15</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources7" msdata:rowOrder="6">
+        <resource_id>27</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ToolTip</resource_type>
+        <original_string>User Input 274</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources8" msdata:rowOrder="7">
+        <resource_id>28</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>GroupBoxText</resource_type>
+        <original_string>Account Options</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources9" msdata:rowOrder="8">
+        <resource_id>29</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>HeaderText</resource_type>
+        <original_string>User Input 87</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources10" msdata:rowOrder="9">
+        <resource_id>30</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LinkText</resource_type>
+        <original_string>Sign Out</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources11" msdata:rowOrder="10">
+        <resource_id>31</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ToolTip</resource_type>
+        <original_string>Click to save changes</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources12" msdata:rowOrder="11">
+        <resource_id>32</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WarningMessage</resource_type>
+        <original_string>This action cannot be undone</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources13" msdata:rowOrder="12">
+        <resource_id>33</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LinkText</resource_type>
+        <original_string>Contact Support</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources14" msdata:rowOrder="13">
+        <resource_id>34</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ToolTip</resource_type>
+        <original_string>Export to Excel</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources15" msdata:rowOrder="14">
+        <resource_id>35</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>System Message 177</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources16" msdata:rowOrder="15">
+        <resource_id>36</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LabelText</resource_type>
+        <original_string>Sample Text 489</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources17" msdata:rowOrder="16">
+        <resource_id>37</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>Messages</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources18" msdata:rowOrder="17">
+        <resource_id>38</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LabelText</resource_type>
+        <original_string>Total Amount</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources19" msdata:rowOrder="18">
+        <resource_id>39</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>CommandButton</resource_type>
+        <original_string>Back</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources20" msdata:rowOrder="19">
+        <resource_id>40</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>User Input 286</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources21" msdata:rowOrder="20">
+        <resource_id>41</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WindowTitle</resource_type>
+        <original_string>Backup Manager</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources22" msdata:rowOrder="21">
+        <resource_id>42</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WarningMessage</resource_type>
+        <original_string>Sample Text 102</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources23" msdata:rowOrder="22">
+        <resource_id>43</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>CommandButton</resource_type>
+        <original_string>Close</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources24" msdata:rowOrder="23">
+        <resource_id>44</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>Settings</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources25" msdata:rowOrder="24">
+        <resource_id>45</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>Notifications</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources26" msdata:rowOrder="25">
+        <resource_id>46</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ToolTip</resource_type>
+        <original_string>Print document</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources27" msdata:rowOrder="26">
+        <resource_id>47</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>System Message 63</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources28" msdata:rowOrder="27">
+        <resource_id>48</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>Last updated</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources29" msdata:rowOrder="28">
+        <resource_id>49</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Status:</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources30" msdata:rowOrder="29">
+        <resource_id>50</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>Insert</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources31" msdata:rowOrder="30">
+        <resource_id>51</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Date:</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources32" msdata:rowOrder="31">
+        <resource_id>52</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>NotificationMessage</resource_type>
+        <original_string>Task assigned to you</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources33" msdata:rowOrder="32">
+        <resource_id>53</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>Waiting</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources34" msdata:rowOrder="33">
+        <resource_id>54</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>Tools</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources35" msdata:rowOrder="34">
+        <resource_id>55</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>InfoMessage</resource_type>
+        <original_string>Settings saved</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources36" msdata:rowOrder="35">
+        <resource_id>56</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>System Message 186</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources37" msdata:rowOrder="36">
+        <resource_id>57</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>Last updated</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources38" msdata:rowOrder="37">
+        <resource_id>58</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>DialogTitle</resource_type>
+        <original_string>Sample Text 405</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources39" msdata:rowOrder="38">
+        <resource_id>59</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ButtonText</resource_type>
+        <original_string>Remove</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources40" msdata:rowOrder="39">
+        <resource_id>60</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ValidationMessage</resource_type>
+        <original_string>Sample Text 402</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources41" msdata:rowOrder="40">
+        <resource_id>61</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>© 2024 Company Name</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources42" msdata:rowOrder="41">
+        <resource_id>62</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>Sample Text 238</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources43" msdata:rowOrder="42">
+        <resource_id>63</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WarningMessage</resource_type>
+        <original_string>Session about to expire</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources44" msdata:rowOrder="43">
+        <resource_id>64</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>GroupBoxText</resource_type>
+        <original_string>Security Settings</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources45" msdata:rowOrder="44">
+        <resource_id>65</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WarningMessage</resource_type>
+        <original_string>Unsaved changes will be lost</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources46" msdata:rowOrder="45">
+        <resource_id>66</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ValidationMessage</resource_type>
+        <original_string>Value out of range</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources47" msdata:rowOrder="46">
+        <resource_id>67</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>Messages</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources48" msdata:rowOrder="47">
+        <resource_id>68</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>HeaderText</resource_type>
+        <original_string>Sample Text 5</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources49" msdata:rowOrder="48">
+        <resource_id>69</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>All rights reserved</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources50" msdata:rowOrder="49">
+        <resource_id>70</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ToolTip</resource_type>
+        <original_string>Toggle visibility</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources51" msdata:rowOrder="50">
+        <resource_id>71</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LinkText</resource_type>
+        <original_string>View Details</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources52" msdata:rowOrder="51">
+        <resource_id>72</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>Users</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources53" msdata:rowOrder="52">
+        <resource_id>73</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>InfoMessage</resource_type>
+        <original_string>Sample Text 472</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources54" msdata:rowOrder="53">
+        <resource_id>74</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WindowTitle</resource_type>
+        <original_string>System Configuration</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources55" msdata:rowOrder="54">
+        <resource_id>75</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>HeaderText</resource_type>
+        <original_string>Data Analysis</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources56" msdata:rowOrder="55">
+        <resource_id>76</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ButtonText</resource_type>
+        <original_string>Download</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources57" msdata:rowOrder="56">
+        <resource_id>77</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ButtonText</resource_type>
+        <original_string>Duplicate</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources58" msdata:rowOrder="57">
+        <resource_id>78</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ToolTip</resource_type>
+        <original_string>Toggle visibility</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources59" msdata:rowOrder="58">
+        <resource_id>79</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>Last updated</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources60" msdata:rowOrder="59">
+        <resource_id>80</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ValidationMessage</resource_type>
+        <original_string>Sample Text 371</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources61" msdata:rowOrder="60">
+        <resource_id>81</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Category:</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources62" msdata:rowOrder="61">
+        <resource_id>82</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>Updated</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources63" msdata:rowOrder="62">
+        <resource_id>83</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>Dashboard</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources64" msdata:rowOrder="63">
+        <resource_id>84</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>Sample Text 112</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources65" msdata:rowOrder="64">
+        <resource_id>85</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WarningMessage</resource_type>
+        <original_string>Unsaved changes will be lost</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources66" msdata:rowOrder="65">
+        <resource_id>86</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>Invalid input</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources67" msdata:rowOrder="66">
+        <resource_id>87</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>CommandButton</resource_type>
+        <original_string>Submit</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources68" msdata:rowOrder="67">
+        <resource_id>88</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Email:</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources69" msdata:rowOrder="68">
+        <resource_id>89</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>CommandButton</resource_type>
+        <original_string>Next</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources70" msdata:rowOrder="69">
+        <resource_id>90</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WarningMessage</resource_type>
+        <original_string>Connection unstable</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources71" msdata:rowOrder="70">
+        <resource_id>91</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ToolTip</resource_type>
+        <original_string>User Input 258</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources72" msdata:rowOrder="71">
+        <resource_id>92</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Title:</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources73" msdata:rowOrder="72">
+        <resource_id>93</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>InfoMessage</resource_type>
+        <original_string>File uploaded successfully</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources74" msdata:rowOrder="73">
+        <resource_id>94</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>File not found</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources75" msdata:rowOrder="74">
+        <resource_id>95</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LinkText</resource_type>
+        <original_string>Read Documentation</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources76" msdata:rowOrder="75">
+        <resource_id>96</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>Window</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources77" msdata:rowOrder="76">
+        <resource_id>97</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>Sample Text 36</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources78" msdata:rowOrder="77">
+        <resource_id>98</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>Sample Text 159</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources79" msdata:rowOrder="78">
+        <resource_id>99</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>HeaderText</resource_type>
+        <original_string>Sample Text 344</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources80" msdata:rowOrder="79">
+        <resource_id>100</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>NotificationMessage</resource_type>
+        <original_string>User Input 76</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources81" msdata:rowOrder="80">
+        <resource_id>101</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>NotificationMessage</resource_type>
+        <original_string>Sample Text 218</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources82" msdata:rowOrder="81">
+        <resource_id>102</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ValidationMessage</resource_type>
+        <original_string>Invalid date format</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources83" msdata:rowOrder="82">
+        <resource_id>103</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>Sample Text 488</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources84" msdata:rowOrder="83">
+        <resource_id>104</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LabelText</resource_type>
+        <original_string>Processing Time</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources85" msdata:rowOrder="84">
+        <resource_id>105</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WindowTitle</resource_type>
+        <original_string>Backup Manager</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources86" msdata:rowOrder="85">
+        <resource_id>106</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>InfoMessage</resource_type>
+        <original_string>Loading data...</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources87" msdata:rowOrder="86">
+        <resource_id>107</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>Disconnected</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources88" msdata:rowOrder="87">
+        <resource_id>108</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>Tools</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources89" msdata:rowOrder="88">
+        <resource_id>109</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>InfoMessage</resource_type>
+        <original_string>No records found</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources90" msdata:rowOrder="89">
+        <resource_id>110</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>GroupBoxText</resource_type>
+        <original_string>Contact Details</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources91" msdata:rowOrder="90">
+        <resource_id>111</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Quantity:</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources92" msdata:rowOrder="91">
+        <resource_id>112</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>CommandButton</resource_type>
+        <original_string>Submit</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources93" msdata:rowOrder="92">
+        <resource_id>113</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LinkText</resource_type>
+        <original_string>Sample Text 262</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources94" msdata:rowOrder="93">
+        <resource_id>114</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LinkText</resource_type>
+        <original_string>User Input 297</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources95" msdata:rowOrder="94">
+        <resource_id>115</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>DialogTitle</resource_type>
+        <original_string>System Message 106</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources96" msdata:rowOrder="95">
+        <resource_id>116</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>Sample Text 273</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources97" msdata:rowOrder="96">
+        <resource_id>117</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>Processing...</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources98" msdata:rowOrder="97">
+        <resource_id>118</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>GroupBoxText</resource_type>
+        <original_string>General</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources99" msdata:rowOrder="98">
+        <resource_id>119</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>User Input 232</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources100" msdata:rowOrder="99">
+        <resource_id>120</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>Tools</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources101" msdata:rowOrder="100">
+        <resource_id>121</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>Syncing</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources102" msdata:rowOrder="101">
+        <resource_id>122</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>Privacy Policy</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources103" msdata:rowOrder="102">
+        <resource_id>123</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ToolTip</resource_type>
+        <original_string>Export to Excel</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources104" msdata:rowOrder="103">
+        <resource_id>124</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WindowTitle</resource_type>
+        <original_string>Application Settings</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources105" msdata:rowOrder="104">
+        <resource_id>125</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WindowTitle</resource_type>
+        <original_string>Sample Text 322</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources106" msdata:rowOrder="105">
+        <resource_id>126</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>Privacy Policy</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources107" msdata:rowOrder="106">
+        <resource_id>127</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>Access denied</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources108" msdata:rowOrder="107">
+        <resource_id>128</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>User Input 205</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources109" msdata:rowOrder="108">
+        <resource_id>129</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LinkText</resource_type>
+        <original_string>Download File</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources110" msdata:rowOrder="109">
+        <resource_id>130</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>Operation failed</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources111" msdata:rowOrder="110">
+        <resource_id>131</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>InfoMessage</resource_type>
+        <original_string>File uploaded successfully</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources112" msdata:rowOrder="111">
+        <resource_id>132</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>HeaderText</resource_type>
+        <original_string>Configuration Panel</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources113" msdata:rowOrder="112">
+        <resource_id>133</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>HeaderText</resource_type>
+        <original_string>Data Analysis</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources114" msdata:rowOrder="113">
+        <resource_id>134</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>Access denied</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources115" msdata:rowOrder="114">
+        <resource_id>135</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>Invalid format</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources116" msdata:rowOrder="115">
+        <resource_id>136</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>Dashboard</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources117" msdata:rowOrder="116">
+        <resource_id>137</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>Privacy Policy</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources118" msdata:rowOrder="117">
+        <resource_id>138</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ConfirmationMessage</resource_type>
+        <original_string>Sample Text 13</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources119" msdata:rowOrder="118">
+        <resource_id>139</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>GroupBoxText</resource_type>
+        <original_string>System Message 39</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources120" msdata:rowOrder="119">
+        <resource_id>140</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Quantity:</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources121" msdata:rowOrder="120">
+        <resource_id>141</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>GroupBoxText</resource_type>
+        <original_string>General</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources122" msdata:rowOrder="121">
+        <resource_id>142</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ConfirmationMessage</resource_type>
+        <original_string>User Input 30</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources123" msdata:rowOrder="122">
+        <resource_id>143</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>GroupBoxText</resource_type>
+        <original_string>System Message 48</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources124" msdata:rowOrder="123">
+        <resource_id>144</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LabelText</resource_type>
+        <original_string>Record Count</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources125" msdata:rowOrder="124">
+        <resource_id>145</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ValidationMessage</resource_type>
+        <original_string>Invalid date format</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources126" msdata:rowOrder="125">
+        <resource_id>146</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Date:</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources127" msdata:rowOrder="126">
+        <resource_id>147</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>Connection failed</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources128" msdata:rowOrder="127">
+        <resource_id>148</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Sample Text 96</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources129" msdata:rowOrder="128">
+        <resource_id>149</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TextBox_Label</resource_type>
+        <original_string>Name:</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources130" msdata:rowOrder="129">
+        <resource_id>150</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>Notifications</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources131" msdata:rowOrder="130">
+        <resource_id>151</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>Invalid input</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources132" msdata:rowOrder="131">
+        <resource_id>152</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WarningMessage</resource_type>
+        <original_string>Sample Text 238</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources133" msdata:rowOrder="132">
+        <resource_id>153</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WarningMessage</resource_type>
+        <original_string>Sample Text 484</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources134" msdata:rowOrder="133">
+        <resource_id>154</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>NotificationMessage</resource_type>
+        <original_string>System update available</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources135" msdata:rowOrder="134">
+        <resource_id>155</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>User Input 183</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources136" msdata:rowOrder="135">
+        <resource_id>156</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>CommandButton</resource_type>
+        <original_string>Sample Text 383</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources137" msdata:rowOrder="136">
+        <resource_id>157</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ConfirmationMessage</resource_type>
+        <original_string>Apply new settings?</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources138" msdata:rowOrder="137">
+        <resource_id>158</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ToolTip</resource_type>
+        <original_string>Copy to clipboard</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources139" msdata:rowOrder="138">
+        <resource_id>159</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>GroupBoxText</resource_type>
+        <original_string>General</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources140" msdata:rowOrder="139">
+        <resource_id>160</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>FooterText</resource_type>
+        <original_string>Contact Us</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources141" msdata:rowOrder="140">
+        <resource_id>161</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>DialogTitle</resource_type>
+        <original_string>Sample Text 198</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources142" msdata:rowOrder="141">
+        <resource_id>162</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>HeaderText</resource_type>
+        <original_string>Project Summary</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources143" msdata:rowOrder="142">
+        <resource_id>163</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>LabelText</resource_type>
+        <original_string>Sample Text 43</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources144" msdata:rowOrder="143">
+        <resource_id>164</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>StatusMessage</resource_type>
+        <original_string>Waiting</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources145" msdata:rowOrder="144">
+        <resource_id>165</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ErrorMessage</resource_type>
+        <original_string>Invalid input</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources146" msdata:rowOrder="145">
+        <resource_id>166</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>WarningMessage</resource_type>
+        <original_string>Sample Text 339</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources147" msdata:rowOrder="146">
+        <resource_id>167</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>System Message 21</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources148" msdata:rowOrder="147">
+        <resource_id>168</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>TabTitle</resource_type>
+        <original_string>Settings</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources149" msdata:rowOrder="148">
+        <resource_id>169</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>ConfirmationMessage</resource_type>
+        <original_string>Confirm password change</original_string>
+        <resource_comment />
+      </LanguageResources>
+      <LanguageResources diffgr:id="LanguageResources150" msdata:rowOrder="149">
+        <resource_id>170</resource_id>
+        <namespace_name>Nsb</namespace_name>
+        <resource_type>MenuText</resource_type>
+        <original_string>System Message 154</original_string>
+        <resource_comment />
+      </LanguageResources>
+    </ResourceToBeTranslated>
+  </diffgr:diffgram>
+</DataSet>

@@ -1,0 +1,142 @@
+<StringResources>
+    <resource>
+        <resource_id>1</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Accumulation Basis [{0}]</original_string>
+        <resource_comment>Parameterized string for accumulation basis</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>2</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Accumulation Method [{0}]</original_string>
+        <resource_comment>Parameterized string for accumulation method</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>3</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Allocation Type Definition [{0}]</original_string>
+        <resource_comment>Parameterized string for allocation type definition</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>4</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>AOM Parameters</original_string>
+        <resource_comment>Label for AOM Parameters</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>5</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>AP Parameters</original_string>
+        <resource_comment>Label for AP Parameters</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>6</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>AR Parameters</original_string>
+        <resource_comment>Label for AR Parameters</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>7</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Automated Adjustment [{0}]</original_string>
+        <resource_comment>Parameterized string for automated adjustment</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>8</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Automated Adjustment [{0}] / Assignment Type [{1}] / Code [{2}]</original_string>
+        <resource_comment>Parameterized string for automated adjustment with assignment type and code</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>9</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Automated Adjustment [{0}] / Employee Number [{1}] / Employee Commission Code [{2}]</original_string>
+        <resource_comment>Parameterized string for automated adjustment with employee number and commission code</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>10</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Automated Adjustment [{0}] / Line Id [{1}]</original_string>
+        <resource_comment>Parameterized string for automated adjustment with line ID</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>11</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Bank No. [{0}]</original_string>
+        <resource_comment>Parameterized string for bank number</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>12</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Branch No. [{0}]</original_string>
+        <resource_comment>Parameterized string for branch number</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>13</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Branch No. [{0}], Account No. [{1}]</original_string>
+        <resource_comment>Parameterized string for branch number and account number</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>14</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>FNDTN_SCRTY_APLCTN_LCNS</original_string>
+        <resource_comment>Specific application license string</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>15</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>From Account Number [{0}] / Subledger Rollup Type [{1}]</original_string>
+        <resource_comment>Parameterized string for account number and subledger rollup type</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>16</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>GL Account [{0}] / Transaction Date [{1}] / Store [{2}] / Transaction Category [{3}] / Line Object [{4}] / Line Action [{5}] / Data Source [{6}] / Posting Date [{7}]</original_string>
+        <resource_comment>Highly parameterized string for GL account details</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>17</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>GL Company No. [{0}]</original_string>
+        <resource_comment>Parameterized string for GL company number</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>18</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Import Control File [{0}] / Id [{1}]</original_string>
+        <resource_comment>Parameterized string for import control file and ID</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>19</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Information Set Definition [{0}]</original_string>
+        <resource_comment>Parameterized string for information set definition</resource_comment>
+    </resource>
+    <resource>
+        <resource_id>20</resource_id>
+        <namespace_name>General</namespace_name>
+        <resource_type>Label</resource_type>
+        <original_string>Interface Rejection Reason [{0}] / Store [{1}] / Transaction Date [{2}] / Register [{3}] / Date Reject ID [{4}] / Transaction No [{5}] / Transaction Series [{6}] / Entry Date Time [{7}] / Line ID [{8}]</original_string>
+        <resource_comment>Highly parameterized string for interface rejection reason</resource_comment>
+    </resource>
+</StringResources>
