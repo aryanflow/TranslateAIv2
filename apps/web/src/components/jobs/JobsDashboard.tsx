@@ -375,10 +375,11 @@ export function JobsDashboard() {
                             <span className="tabular-nums font-semibold text-[var(--fg)]">
                               {job.judgePassScoreMin10.toFixed(1)}
                             </span>
-                            /10 are retried (0–10 scale). Bundle JSON lists{" "}
-                            <em className="text-[var(--fg-soft)] not-italic">Original</em>,{" "}
-                            <em className="text-[var(--fg-soft)] not-italic">Translation</em>, and{" "}
-                            <em className="text-[var(--fg-soft)] not-italic">Reviewer notes</em> per string id.
+                            /10 are retried (0–10 scale). Use{" "}
+                            <em className="text-[var(--fg-soft)] not-italic">.translation-review.csv</em>{" "}
+                            for a spreadsheet (original · translated · score · reviewer feedback), or{" "}
+                            <em className="text-[var(--fg-soft)] not-italic">.qa-bundle.json</em>{" "}
+                            for the structured JSON bundle.
                           </p>
                         ) : null}
                         {job.resultUrls.length ? (
@@ -386,8 +387,10 @@ export function JobsDashboard() {
                             {job.resultUrls.map((key) => {
                               const name = key.split("/").pop() ?? key;
                               const friendly = name.endsWith(".qa-bundle.json")
-                                ? `${name} — Original · Translation · Reviewer notes`
-                                : name;
+                                ? `${name} — Original · Translation · Reviewer notes (JSON)`
+                                : name.endsWith(".translation-review.csv")
+                                  ? `${name} — spreadsheet: original · translated · score · feedback`
+                                  : name;
                               return (
                                 <li
                                   key={key}

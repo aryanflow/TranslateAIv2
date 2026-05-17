@@ -40,6 +40,51 @@ function extForFormat(format: string): string {
   }
 }
 
+function csvEscapeField(value: string | number | boolean): string {
+  const s = String(value);
+  if (/[",\r\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function qaRowsToReviewCsv(
+  rows: readonly {
+    string_id: number;
+    source_path: string;
+    original: string;
+    translation: string;
+    reviewer_score_0_to_10: number;
+    reviewer_notes: string;
+    meets_accuracy_threshold: boolean;
+  }[],
+): string {
+  const headers = [
+    'string_id',
+    'source_path',
+    'original',
+    'translated',
+    'reviewer_score_0_to_10',
+    'reviewer_feedback',
+    'meets_accuracy_threshold',
+  ];
+  const lines = [
+    headers.join(','),
+    ...rows.map((r) =>
+      [
+        csvEscapeField(r.string_id),
+        csvEscapeField(r.source_path),
+        csvEscapeField(r.original),
+        csvEscapeField(r.translation),
+        csvEscapeField(r.reviewer_score_0_to_10),
+        csvEscapeField(r.reviewer_notes),
+        csvEscapeField(r.meets_accuracy_threshold),
+      ].join(','),
+    ),
+  ];
+  return `\ufeff${lines.join('\n')}`;
+}
+
 function normalizeTranslatorId(raw: string): TranslatorKind {
   if (raw === 'gemini' || raw === 'langdock') return raw;
   return 'bedrock';
@@ -341,6 +386,14 @@ export class TranslationOrchestratorService {
           'application/json; charset=utf-8',
         );
         resultUrls.push(qaKey);
+
+        const qaCsvKey = `results/${job.tenantId}/${jobId}/${targetLang}.translation-review.csv`;
+        await this.files.putObjectBytes(
+          qaCsvKey,
+          Buffer.from(qaRowsToReviewCsv(qaRows), 'utf-8'),
+          'text/csv; charset=utf-8',
+        );
+        resultUrls.push(qaCsvKey);
       }
 
       await this.prisma.job.update({
