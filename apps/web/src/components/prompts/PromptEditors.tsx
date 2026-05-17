@@ -16,7 +16,7 @@ export function PromptEditors() {
         {
           title: "User prompt",
           subtitle: "Tone and variables per target language — formal DE vs. tight EN, etc.",
-          foot: `Variables: {{source_text}}, {{glossary_block}}`,
+          foot: `Variables: {{glossary_block}}, {{source_lang}}, {{target_lang}}, {{target_language_name}}`,
         },
       ].map((col, i) => (
         <section

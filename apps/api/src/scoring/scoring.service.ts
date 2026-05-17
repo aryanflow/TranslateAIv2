@@ -1,17 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { LangdockOpenAiScorerService } from './langdock-openai-scorer.service';
-import { GeminiLangdockScorerService } from './gemini-langdock-scorer.service';
-import type { ScoreBatchResult } from './langdock-openai-scorer.service';
+import { BedrockScorerService } from './bedrock-scorer.service';
+import type { ScoreBatchResult } from './bedrock-scorer.service';
 
-export type ScorerKind = 'gemini' | 'langdock';
+/** Stored on Tenant — legacy values map to Bedrock. */
+export type ScorerKind = 'bedrock' | 'gemini' | 'langdock';
 
-/** Routes judge/scoring to Langdock OpenAI or Gemini (via Langdock Google API). */
 @Injectable()
 export class ScoringService {
-  constructor(
-    private readonly langdockScorer: LangdockOpenAiScorerService,
-    private readonly geminiScorer: GeminiLangdockScorerService,
-  ) {}
+  constructor(private readonly bedrock: BedrockScorerService) {}
 
   async score(
     kind: ScorerKind,
@@ -19,10 +15,15 @@ export class ScoringService {
     translations: string[],
     language: string,
     tags?: (string | null)[] | null,
+    opts?: { stringIds?: number[] },
   ): Promise<ScoreBatchResult> {
-    if (kind === 'gemini') {
-      return this.geminiScorer.score(originals, translations, language, tags);
-    }
-    return this.langdockScorer.score(originals, translations, language, tags);
+    void kind;
+    return this.bedrock.score(
+      originals,
+      translations,
+      language,
+      tags ?? undefined,
+      opts,
+    );
   }
 }

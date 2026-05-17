@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { HeadBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import Redis from 'ioredis';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { LangdockGoogleGeminiClient } from '../llm/langdock-google-gemini.client';
-import { LangdockOpenAiTranslatorService } from '../llm/langdock-openai-translator.service';
+import { BedrockConverseService } from '../llm/bedrock-converse.service';
+import { BedrockTranslatorService } from '../llm/bedrock-translator.service';
+import { BedrockScorerService } from '../scoring/bedrock-scorer.service';
 
 type DepStatus = 'up' | 'down' | 'degraded' | 'unknown';
 
@@ -13,8 +14,9 @@ export class HealthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-    private readonly geminiClient: LangdockGoogleGeminiClient,
-    private readonly langdockOpenAi: LangdockOpenAiTranslatorService,
+    private readonly converse: BedrockConverseService,
+    private readonly bedrockTranslator: BedrockTranslatorService,
+    private readonly bedrockScorer: BedrockScorerService,
   ) {}
 
   getLive() {
@@ -209,36 +211,46 @@ export class HealthService {
   }
 
   private async probeTranslator(): Promise<{
+    /** Provider slug (legacy consumers); prefer `provider` + `modelId`. */
     id: string;
+    provider: 'bedrock';
+    modelId: string;
     status: DepStatus;
     latencyMs?: number;
     lastError: string | null;
   }> {
-    const token =
-      this.config.get<string>('LANGDOCK_BEARER_TOKEN') ??
-      this.config.get<string>('LANGDOCK_API_KEY');
-    if (!token) {
+    const mid = this.bedrockTranslator.modelId();
+    if (!mid) {
       return {
-        id: 'gemini',
+        id: 'bedrock',
+        provider: 'bedrock',
+        modelId: '',
         status: 'down',
-        lastError: 'Missing LANGDOCK_BEARER_TOKEN (Gemini via Langdock)',
+        lastError: 'Bedrock translation model id could not be resolved',
       };
     }
     try {
       const t0 = performance.now();
-      await this.geminiClient.generateContent('Reply with exactly: OK', {
+      await this.converse.converseText({
+        modelId: mid,
+        system: 'Reply with exactly: OK',
+        user: 'Ping.',
+        maxTokens: 64,
         temperature: 0,
-        maxOutputTokens: 16,
       });
       return {
-        id: 'gemini',
+        id: 'bedrock',
+        provider: 'bedrock',
+        modelId: mid,
         status: 'up',
         latencyMs: Math.round(performance.now() - t0),
         lastError: null,
       };
     } catch (e) {
       return {
-        id: 'gemini',
+        id: 'bedrock',
+        provider: 'bedrock',
+        modelId: mid,
         status: 'degraded',
         lastError: e instanceof Error ? e.message : 'unknown',
       };
@@ -247,32 +259,44 @@ export class HealthService {
 
   private async probeJudge(): Promise<{
     id: string;
+    provider: 'bedrock';
+    modelId: string;
     status: DepStatus;
     latencyMs?: number;
     lastError: string | null;
   }> {
-    const token =
-      this.config.get<string>('LANGDOCK_BEARER_TOKEN') ??
-      this.config.get<string>('LANGDOCK_API_KEY');
-    if (!token) {
+    const mid = this.bedrockScorer.modelId();
+    if (!mid) {
       return {
-        id: 'langdock',
+        id: 'bedrock',
+        provider: 'bedrock',
+        modelId: '',
         status: 'down',
-        lastError: 'Missing LANGDOCK_BEARER_TOKEN',
+        lastError: 'Bedrock scoring model id could not be resolved',
       };
     }
     try {
       const t0 = performance.now();
-      await this.langdockOpenAi.chat([{ role: 'user', content: 'ping' }], 0);
+      await this.converse.converseText({
+        modelId: mid,
+        system: 'Reply with exactly: OK',
+        user: 'Ping.',
+        maxTokens: 64,
+        temperature: 0,
+      });
       return {
-        id: 'langdock',
+        id: 'bedrock',
+        provider: 'bedrock',
+        modelId: mid,
         status: 'up',
         latencyMs: Math.round(performance.now() - t0),
         lastError: null,
       };
     } catch (e) {
       return {
-        id: 'langdock',
+        id: 'bedrock',
+        provider: 'bedrock',
+        modelId: mid,
         status: 'degraded',
         lastError: e instanceof Error ? e.message : 'unknown',
       };

@@ -14,7 +14,11 @@ export type RegenerateInput = {
   /** xml, json, csv as utf-8 string; excel uses rawBytes */
   rawText: string;
   rawBytes?: Buffer;
-  translationMap: Record<string, string>;
+  /** Parallel arrays — XML walks &lt;original_string&gt; in extraction order. */
+  originalsOrdered: string[];
+  translationsOrdered: string[];
+  /** Keys match extractor `tags` — avoids collisions when source strings repeat. */
+  tagTranslationMap: Record<string, string>;
   selectedColumns?: string[];
   selectedSheet?: string;
 };
@@ -29,7 +33,9 @@ export class RegeneratorsService {
       format,
       rawText,
       rawBytes,
-      translationMap,
+      originalsOrdered,
+      translationsOrdered,
+      tagTranslationMap,
       selectedColumns,
       selectedSheet,
     } = input;
@@ -37,17 +43,17 @@ export class RegeneratorsService {
     switch (format) {
       case 'xml':
         return {
-          body: regenerateXml(rawText, translationMap),
+          body: regenerateXml(rawText, originalsOrdered, translationsOrdered),
           contentType: 'application/xml; charset=utf-8',
         };
       case 'json':
         return {
-          body: regenerateJson(rawText, translationMap),
+          body: regenerateJson(rawText, tagTranslationMap),
           contentType: 'application/json; charset=utf-8',
         };
       case 'csv':
         return {
-          body: regenerateCsv(rawText, translationMap, selectedColumns),
+          body: regenerateCsv(rawText, tagTranslationMap, selectedColumns),
           contentType: 'text/csv; charset=utf-8',
         };
       case 'excel': {
@@ -61,7 +67,7 @@ export class RegeneratorsService {
         }
         const out = regenerateExcel(
           rawBytes,
-          translationMap,
+          tagTranslationMap,
           selectedSheet,
           selectedColumns,
         );

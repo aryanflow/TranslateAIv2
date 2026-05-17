@@ -1,0 +1,11 @@
+{
+  "storefront": {
+    "welcome_title": "Welcome to checkout",
+    "sku_placeholder": "Scan or enter SKU",
+    "buttons": {
+      "pay_now": "Pay now",
+      "cancel": "Cancel"
+    }
+  },
+  "notifications": ["Price updated", "Item removed from cart"]
+}

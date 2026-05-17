@@ -62,7 +62,8 @@ export function extractXml(fileBytes: Buffer): {
 
 export function regenerateXml(
   originalXml: string,
-  translationMap: Record<string, string>,
+  _originalsOrdered: string[],
+  translationsOrdered: string[],
 ): string {
   const escapeXml = (s: string) =>
     s
@@ -73,13 +74,14 @@ export function regenerateXml(
 
   const unescape = (s: string) => decode(s);
 
+  let idx = 0;
   const pattern = /<original_string>(.*?)<\/original_string>/gis;
   return originalXml.replace(pattern, (full, inner: string) => {
+    const slot = idx;
+    idx += 1;
     const originalText = unescape(inner.trim());
-    if (Object.prototype.hasOwnProperty.call(translationMap, originalText)) {
-      const translated = translationMap[originalText];
-      return `${full}\n        <translated_string>${escapeXml(translated)}</translated_string>`;
-    }
-    return full;
+    const trans =
+      slot < translationsOrdered.length ? translationsOrdered[slot] : originalText;
+    return `${full}\n        <translated_string>${escapeXml(trans)}</translated_string>`;
   });
 }

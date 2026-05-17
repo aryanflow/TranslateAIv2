@@ -2,13 +2,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3001";
-
 export function BuildInfo() {
   const q = useQuery({
-    queryKey: ["version", apiBase],
+    queryKey: ["version", "upstream"],
     queryFn: async () => {
-      const res = await fetch(`${apiBase}/version`);
+      const res = await fetch("/api/upstream/version");
       if (!res.ok) {
         throw new Error("version fetch failed");
       }
@@ -35,11 +33,12 @@ export function BuildInfo() {
   if (q.isError || !q.data) {
     return (
       <div className="rounded-xl border border-dashed border-[var(--edge-bright)] bg-[var(--bg0)]/40 p-5 text-sm text-[var(--muted)]">
-        Start the API on <span className="font-mono text-[var(--fg-soft)]">{apiBase}</span> to load{" "}
+        Start the Nest API and set <code className="font-mono text-xs">API_PROXY_TARGET</code> (or{" "}
+        <code className="font-mono text-xs">NEXT_PUBLIC_API_URL</code>) so{" "}
         <code className="rounded bg-[var(--edge)] px-1.5 py-0.5 font-mono text-xs text-[var(--accent-muted)]">
-          GET /version
-        </code>
-        .
+          /api/upstream/version
+        </code>{" "}
+        can reach it.
       </div>
     );
   }

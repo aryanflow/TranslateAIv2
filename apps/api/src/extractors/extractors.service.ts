@@ -31,9 +31,11 @@ export class ExtractorsService {
     switch (format) {
       case 'xml': {
         const { originals, tags, rawText } = extractXml(fileBytes);
+        const stringIds = originals.map((_, i) => i + 1);
         return {
           originals,
           tags,
+          stringIds,
           rawText,
           format,
           meta: {},
@@ -41,9 +43,11 @@ export class ExtractorsService {
       }
       case 'json': {
         const { originals, tags, rawText } = extractJson(fileBytes);
+        const stringIds = originals.map((_, i) => i + 1);
         return {
           originals,
           tags,
+          stringIds,
           rawText,
           format,
           meta: {},
@@ -54,9 +58,11 @@ export class ExtractorsService {
           fileBytes,
           opts.selectedColumns,
         );
+        const stringIds = originals.map((_, i) => i + 1);
         return {
           originals,
           tags,
+          stringIds,
           rawText,
           format,
           meta,
@@ -68,9 +74,11 @@ export class ExtractorsService {
           opts.selectedSheet,
           opts.selectedColumns,
         );
+        const stringIds = originals.map((_, i) => i + 1);
         return {
           originals,
           tags,
+          stringIds,
           rawText,
           rawBytes: Buffer.from(fileBytes),
           format,

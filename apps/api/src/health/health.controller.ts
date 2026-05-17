@@ -59,8 +59,8 @@ export class HealthController {
       judge: { id: string; status: string; latencyMs?: number };
     };
     return {
-      gemini: { ...llm.translator, role: 'translator' as const },
-      langdock: { ...llm.judge, role: 'judge' as const },
+      bedrockTranslator: { ...llm.translator, role: 'translator' as const },
+      bedrockJudge: { ...llm.judge, role: 'judge' as const },
     };
   }
 

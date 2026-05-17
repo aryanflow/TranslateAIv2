@@ -1,20 +1,17 @@
 import { Module } from '@nestjs/common';
-import { LangdockGoogleGeminiClient } from './langdock-google-gemini.client';
-import { GeminiLangdockTranslatorService } from './gemini-langdock-translator.service';
-import { LangdockOpenAiTranslatorService } from './langdock-openai-translator.service';
+import { BedrockConverseService } from './bedrock-converse.service';
+import { BedrockTranslatorService } from './bedrock-translator.service';
 import { TranslationRouterService } from './translation-router.service';
 
 @Module({
   providers: [
-    LangdockGoogleGeminiClient,
-    GeminiLangdockTranslatorService,
-    LangdockOpenAiTranslatorService,
+    BedrockConverseService,
+    BedrockTranslatorService,
     TranslationRouterService,
   ],
   exports: [
-    LangdockGoogleGeminiClient,
-    GeminiLangdockTranslatorService,
-    LangdockOpenAiTranslatorService,
+    BedrockConverseService,
+    BedrockTranslatorService,
     TranslationRouterService,
   ],
 })

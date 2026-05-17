@@ -1,20 +1,11 @@
 import { Module } from '@nestjs/common';
 import { LlmModule } from '../llm/llm.module';
-import { LangdockOpenAiScorerService } from './langdock-openai-scorer.service';
-import { GeminiLangdockScorerService } from './gemini-langdock-scorer.service';
+import { BedrockScorerService } from './bedrock-scorer.service';
 import { ScoringService } from './scoring.service';
 
 @Module({
   imports: [LlmModule],
-  providers: [
-    LangdockOpenAiScorerService,
-    GeminiLangdockScorerService,
-    ScoringService,
-  ],
-  exports: [
-    ScoringService,
-    LangdockOpenAiScorerService,
-    GeminiLangdockScorerService,
-  ],
+  providers: [BedrockScorerService, ScoringService],
+  exports: [ScoringService, BedrockScorerService],
 })
 export class ScoringModule {}

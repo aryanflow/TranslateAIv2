@@ -4,6 +4,8 @@ export type SourceFormat = 'xml' | 'json' | 'csv' | 'excel';
 export type ExtractResult = {
   originals: string[];
   tags: string[];
+  /** Stable 1-based ids aligned with originals/tags for LLM alignment & QA exports. */
+  stringIds: number[];
   /** Raw text for xml/json/csv; for excel a JSON summary (Python parity). */
   rawText: string;
   /** Original bytes preserved for excel regeneration. */

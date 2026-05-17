@@ -75,7 +75,7 @@ export function extractCsv(
 
 export function regenerateCsv(
   originalCsv: string,
-  translationMap: Record<string, string>,
+  tagTranslationMap: Record<string, string>,
   selectedColumns?: string[],
 ): string {
   let rows: Record<string, string>[];
@@ -101,14 +101,15 @@ export function regenerateCsv(
     cols = columns;
   }
 
-  const out = rows.map((row) => {
+  const out = rows.map((row, rowIdx) => {
     const copy = { ...row };
     for (const col of cols) {
       const raw = row[col];
       if (raw != null && String(raw).trim()) {
-        const key = String(raw).trim();
-        if (Object.prototype.hasOwnProperty.call(translationMap, key)) {
-          copy[col] = translationMap[key];
+        const tag = `row_${rowIdx}_col_${col}`;
+        const mapped = tagTranslationMap[tag];
+        if (mapped !== undefined) {
+          copy[col] = mapped;
         }
       }
     }

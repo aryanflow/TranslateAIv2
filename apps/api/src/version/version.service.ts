@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Injectable } from '@nestjs/common';
+import {
+  DEFAULT_BEDROCK_SCORING_MODEL_ID,
+  DEFAULT_BEDROCK_TRANSLATION_MODEL_ID,
+} from '../config/bedrock-defaults';
 
 @Injectable()
 export class VersionService {
@@ -27,7 +31,8 @@ export class VersionService {
     gitSha: string | null;
     buildTime: string | null;
     node: string;
-    langdockConfigured: boolean;
+    bedrockTranslationModelId: string;
+    bedrockScoringModelId: string;
   } {
     let version = '0.0.0';
     try {
@@ -39,8 +44,12 @@ export class VersionService {
     } catch {
       // dist cwd may differ; keep default
     }
-    const token =
-      process.env.LANGDOCK_BEARER_TOKEN ?? process.env.LANGDOCK_API_KEY ?? '';
+    const bedrockTranslationModelId =
+      process.env.BEDROCK_TRANSLATION_MODEL_ID ??
+      process.env.BEDROCK_MODEL_ID ??
+      DEFAULT_BEDROCK_TRANSLATION_MODEL_ID;
+    const bedrockScoringModelId =
+      process.env.BEDROCK_SCORING_MODEL_ID ?? DEFAULT_BEDROCK_SCORING_MODEL_ID;
     return {
       service: 'aptos-translate-api',
       version,
@@ -52,7 +61,8 @@ export class VersionService {
         null,
       buildTime: process.env.BUILD_TIME ?? null,
       node: process.version,
-      langdockConfigured: Boolean(token.trim()),
+      bedrockTranslationModelId,
+      bedrockScoringModelId,
     };
   }
 }

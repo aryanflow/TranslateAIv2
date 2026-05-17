@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto';
 export class FilesService {
   private readonly client: S3Client;
   private readonly bucket: string;
+  private readonly uploadPrefix: string;
 
   constructor(private readonly config: ConfigService) {
     const region = this.config.get<string>('S3_REGION', 'us-east-1');
@@ -22,6 +23,7 @@ export class FilesService {
       'S3_BUCKET',
       'aptos-translate-uploads',
     );
+    this.uploadPrefix = this.config.get<string>('S3_UPLOAD_PREFIX', 'uploads');
 
     this.client = new S3Client({
       region,
@@ -41,14 +43,20 @@ export class FilesService {
     });
   }
 
+  /** Uploads and translated results are keyed by tenant for presigned download safety. */
+  tenantOwnsObjectKey(tenantId: string, key: string): boolean {
+    const upload = `${this.uploadPrefix}/${tenantId}/`;
+    const results = `results/${tenantId}/`;
+    return key.startsWith(upload) || key.startsWith(results);
+  }
+
   async createPresignedPutUrl(
     tenantId: string,
     fileName: string,
     contentType: string,
   ): Promise<{ uploadUrl: string; fileKey: string }> {
-    const prefix = this.config.get<string>('S3_UPLOAD_PREFIX', 'uploads');
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const fileKey = `${prefix}/${tenantId}/${randomUUID()}-${safeName}`;
+    const fileKey = `${this.uploadPrefix}/${tenantId}/${randomUUID()}-${safeName}`;
 
     const command = new PutObjectCommand({
       Bucket: this.bucket,
@@ -62,6 +70,17 @@ export class FilesService {
     const uploadUrl = await getSignedUrl(this.client, command, { expiresIn });
 
     return { uploadUrl, fileKey };
+  }
+
+  async createPresignedGetUrl(key: string): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
+    const expiresIn = Number(
+      this.config.get<string>('S3_PRESIGN_GET_EXPIRES') ?? '3600',
+    );
+    return getSignedUrl(this.client, command, { expiresIn });
   }
 
   async getObjectBytes(key: string): Promise<Buffer> {

@@ -1,12 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { JobEventsService } from '../common/job-events/job-events.service';
 import { FilesService } from '../files/files.service';
 import { ExtractorsService } from '../extractors/extractors.service';
 import { RegeneratorsService } from '../regenerators/regenerators.service';
 import { TranslationRouterService } from '../llm/translation-router.service';
+import type { TranslatorKind } from '../llm/translation-router.service';
 import { ScoringService } from '../scoring/scoring.service';
+import type { ScorerKind } from '../scoring/scoring.service';
 import { PromptsService } from '../prompts/prompts.service';
+import { LANG_CONFIG } from '../config/lang-config';
+import {
+  DEFAULT_BEDROCK_SCORING_MODEL_ID,
+  DEFAULT_BEDROCK_TRANSLATION_MODEL_ID,
+} from '../config/bedrock-defaults';
+import { substitutePromptVars } from '../llm/prompt-builder';
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -31,6 +40,16 @@ function extForFormat(format: string): string {
   }
 }
 
+function normalizeTranslatorId(raw: string): TranslatorKind {
+  if (raw === 'gemini' || raw === 'langdock') return raw;
+  return 'bedrock';
+}
+
+function normalizeScorerId(raw: string): ScorerKind {
+  if (raw === 'gemini' || raw === 'langdock') return raw;
+  return 'bedrock';
+}
+
 /** Streams from S3 → extract → batched dual-LLM → regenerate → S3 (see docs/ARCHITECTURE.md). */
 @Injectable()
 export class TranslationOrchestratorService {
@@ -38,6 +57,7 @@ export class TranslationOrchestratorService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
     private readonly files: FilesService,
     private readonly extractors: ExtractorsService,
     private readonly regenerators: RegeneratorsService,
@@ -60,13 +80,19 @@ export class TranslationOrchestratorService {
     const threshold01 = job.minTranslationScore ?? 0.7;
     const threshold10 = threshold01 <= 1 ? threshold01 * 10 : threshold01;
 
-    const translatorKind =
-      job.tenant.activeTranslator === 'langdock' ? 'langdock' : 'gemini';
-    const scorerKind =
-      job.tenant.activeScorer === 'gemini' ? 'gemini' : 'langdock';
+    const translatorKind = normalizeTranslatorId(job.tenant.activeTranslator);
+    const scorerKind = normalizeScorerId(job.tenant.activeScorer);
 
     const maxRetries = Math.max(1, job.maxBatchRetries ?? 3);
     const batchSize = Math.max(1, job.batchSize);
+
+    const translatorModelId =
+      this.config.get<string>('BEDROCK_TRANSLATION_MODEL_ID') ??
+      this.config.get<string>('BEDROCK_MODEL_ID') ??
+      DEFAULT_BEDROCK_TRANSLATION_MODEL_ID;
+    const reviewerModelId =
+      this.config.get<string>('BEDROCK_SCORING_MODEL_ID') ??
+      DEFAULT_BEDROCK_SCORING_MODEL_ID;
 
     try {
       await this.prisma.job.update({
@@ -77,22 +103,44 @@ export class TranslationOrchestratorService {
 
       const buf = await this.files.getObjectBytes(job.fileKey);
       const extracted = this.extractors.extract(buf, job.fileKey, {});
+      const batches = chunk(extracted.originals, batchSize);
 
       await this.prisma.job.update({
         where: { id: jobId },
-        data: { status: 'chunking', progress: 5 },
+        data: {
+          status: 'chunking',
+          progress: 5,
+          stringsTotal: extracted.originals.length,
+          batchTotal: batches.length * job.targetLangs.length,
+        },
       });
       await this.events.publish(jobId, {
         phase: 'chunking',
         stringsTotal: extracted.originals.length,
         percent: 5,
       });
-
-      const batches = chunk(extracted.originals, batchSize);
       const resultUrls: string[] = [];
       let globalBatchIndex = 0;
 
       for (const targetLang of job.targetLangs) {
+        type QaRow = {
+          string_id: number;
+          source_path: string;
+          original: string;
+          translation: string;
+          reviewer_score_0_to_10: number;
+          reviewer_notes: string;
+          meets_accuracy_threshold: boolean;
+        };
+        const qaRows: QaRow[] = [];
+
+        const langCfg = LANG_CONFIG[targetLang];
+        if (!langCfg) {
+          throw new Error(
+            `Unsupported target language code "${targetLang}". Configure LANG_CONFIG.`,
+          );
+        }
+
         const terms = await this.prisma.termPreference.findMany({
           where: {
             tenantId: job.tenantId,
@@ -102,22 +150,32 @@ export class TranslationOrchestratorService {
         });
         const glossaryBlock =
           terms.length > 0
-            ? `Authoritative glossary (JSON array of {src,tgt}):\n${JSON.stringify(
+            ? JSON.stringify(
                 terms.map((t) => ({
                   src: t.sourceTerm,
                   tgt: t.preferredTarget,
                 })),
-              )}`
-            : null;
+              )
+            : '[]';
 
         const tmpl = await this.prompts.getTemplate(
           job.tenantId,
           job.sourceLang,
           targetLang,
         );
-        const promptExtra = `Tenant prompt templates (respect alongside structured batch JSON):\nSystem:\n${tmpl.systemText}\nUser template:\n${tmpl.userText}`;
-        const additionalContext =
-          [glossaryBlock, promptExtra].filter(Boolean).join('\n\n') || null;
+        const userTemplateFilled = substitutePromptVars(tmpl.userText, {
+          glossary_block: glossaryBlock,
+          source_lang: job.sourceLang,
+          target_lang: targetLang,
+          target_language_name: langCfg.name,
+        });
+
+        const authorizedReference = [
+          '=== Term preferences (authoritative JSON: src → tgt) ===',
+          glossaryBlock,
+          '=== Rendered user-layer template (administrator-defined; not ad-hoc chat) ===',
+          userTemplateFilled,
+        ].join('\n');
 
         const ordered: string[] = [];
         let offset = 0;
@@ -154,8 +212,14 @@ export class TranslationOrchestratorService {
               translatorKind,
               batch,
               targetLang,
-              null,
-              additionalContext,
+              {
+                authorizedReference,
+                administratorSystemPrompt: tmpl.systemText,
+                batchStringIds: extracted.stringIds.slice(
+                  offset,
+                  offset + batch.length,
+                ),
+              },
             );
 
             const scored = await this.scoring.score(
@@ -164,8 +228,15 @@ export class TranslationOrchestratorService {
               trans,
               targetLang,
               tags,
+              {
+                stringIds: extracted.stringIds.slice(
+                  offset,
+                  offset + batch.length,
+                ),
+              },
             );
             const scores = scored.scores;
+            const feedback = scored.feedback;
             const below = scores.filter((s) => s < threshold10).length;
 
             await this.prisma.jobBatch.upsert({
@@ -192,6 +263,21 @@ export class TranslationOrchestratorService {
             });
 
             if (below === 0 || attempt >= maxRetries) {
+              const sliceIds = extracted.stringIds.slice(
+                offset,
+                offset + batch.length,
+              );
+              for (let bi = 0; bi < batch.length; bi++) {
+                qaRows.push({
+                  string_id: sliceIds[bi],
+                  source_path: tags[bi],
+                  original: batch[bi],
+                  translation: trans[bi],
+                  reviewer_score_0_to_10: scores[bi],
+                  reviewer_notes: feedback[bi],
+                  meets_accuracy_threshold: scores[bi] >= threshold10,
+                });
+              }
               ordered.push(...trans);
               offset += batch.length;
               globalBatchIndex += 1;
@@ -200,9 +286,9 @@ export class TranslationOrchestratorService {
           }
         }
 
-        const translationMap: Record<string, string> = {};
+        const tagTranslationMap: Record<string, string> = {};
         for (let i = 0; i < extracted.originals.length; i++) {
-          translationMap[extracted.originals[i]] = ordered[i];
+          tagTranslationMap[extracted.tags[i]] = ordered[i];
         }
 
         await this.prisma.job.update({
@@ -219,7 +305,9 @@ export class TranslationOrchestratorService {
           format: extracted.format,
           rawText: extracted.rawText,
           rawBytes: extracted.rawBytes,
-          translationMap,
+          originalsOrdered: extracted.originals,
+          translationsOrdered: ordered,
+          tagTranslationMap,
           selectedColumns: extracted.meta.selectedColumns,
           selectedSheet: extracted.meta.selectedSheet,
         });
@@ -232,6 +320,27 @@ export class TranslationOrchestratorService {
             : reg.body;
         await this.files.putObjectBytes(outKey, bodyBuf, reg.contentType);
         resultUrls.push(outKey);
+
+        const qaBundle = {
+          schema: 'translateai.qa_bundle.v1',
+          job_id: jobId,
+          target_language: targetLang,
+          source_language: job.sourceLang,
+          translator_model_id: translatorModelId.trim(),
+          reviewer_model_id: reviewerModelId.trim(),
+          accuracy_threshold_0_to_1: threshold01,
+          accuracy_threshold_0_to_10: threshold10,
+          copy:
+            'Each row is one catalog string: original from source file, translation from the translator model, reviewer_notes / score from the Quality reviewer model.',
+          strings: qaRows,
+        };
+        const qaKey = `results/${job.tenantId}/${jobId}/${targetLang}.qa-bundle.json`;
+        await this.files.putObjectBytes(
+          qaKey,
+          Buffer.from(JSON.stringify(qaBundle, null, 2), 'utf-8'),
+          'application/json; charset=utf-8',
+        );
+        resultUrls.push(qaKey);
       }
 
       await this.prisma.job.update({

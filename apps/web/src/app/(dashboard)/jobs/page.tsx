@@ -1,5 +1,6 @@
+import { Suspense } from "react";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { JobQueuePlaceholder } from "@/components/jobs/JobQueuePlaceholder";
+import { JobsDashboard } from "@/components/jobs/JobsDashboard";
 
 export default function JobsPage() {
   return (
@@ -7,9 +8,15 @@ export default function JobsPage() {
       <PageHeader
         eyebrow="Operations"
         title="Jobs"
-        description="History, live SSE progress, batch diagnostics, and download links when chunks finish scoring and rebuild."
+        description="Live pipeline visuals, batch counts, ETA hints, SSE activity, and downloads when regeneration completes."
       />
-      <JobQueuePlaceholder />
+      <Suspense
+        fallback={
+          <p className="mt-8 text-[13px] text-[var(--muted)]">Loading jobs…</p>
+        }
+      >
+        <JobsDashboard />
+      </Suspense>
     </div>
   );
 }

@@ -7,7 +7,7 @@ export default function TranslatePage() {
       <PageHeader
         eyebrow="Localization"
         title="New translation"
-        description="Upload a catalog, pick targets, then review prompts and term preferences before the job enters the BullMQ pipeline."
+        description="Upload a catalog, pick one target language, inspect extracted strings, then ship a BullMQ job — progress persists on the Jobs board."
       />
       <TranslateWizardShell />
     </div>

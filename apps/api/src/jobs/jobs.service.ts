@@ -13,6 +13,16 @@ export class JobsService {
     private readonly translateQueue: TranslateQueueService,
   ) {}
 
+  private judgeThresholdFields(job: { minTranslationScore: number | null }) {
+    const threshold01 = job.minTranslationScore ?? 0.7;
+    const threshold10 = threshold01 <= 1 ? threshold01 * 10 : threshold01;
+    return {
+      minTranslationScoreStored: job.minTranslationScore,
+      judgePassScoreMin01: threshold01,
+      judgePassScoreMin10: threshold10,
+    };
+  }
+
   async createJob(tenantId: string, body: CreateJobBody) {
     const parsed = createJobBodySchema.parse(body);
     const job = await this.prisma.job.create({
@@ -34,6 +44,11 @@ export class JobsService {
   async getJob(tenantId: string, jobId: string) {
     const job = await this.prisma.job.findFirst({
       where: { id: jobId, tenantId },
+      include: {
+        _count: {
+          select: { batches: true },
+        },
+      },
     });
     if (!job) {
       throw new NotFoundException();
@@ -42,12 +57,52 @@ export class JobsService {
       id: job.id,
       status: job.status,
       progress: job.progress,
+      sourceLang: job.sourceLang,
       targetLangs: job.targetLangs,
+      stringsTotal: job.stringsTotal,
+      batchTotal: job.batchTotal,
+      batchesCompleted: job._count.batches,
       perTargetProgress: Object.fromEntries(
         job.targetLangs.map((l) => [l, job.progress]),
       ),
       failureSummary: null as null | { code: string; count: number }[],
       scoreHistogram: { underThreshold: 0, ok: 0 },
+      createdAt: job.createdAt.toISOString(),
+      updatedAt: job.updatedAt.toISOString(),
+      errorMessage: job.errorMessage,
+      resultUrls: job.resultUrls,
+      ...this.judgeThresholdFields(job),
+    };
+  }
+
+  async listJobs(tenantId: string, take = 40) {
+    const jobs = await this.prisma.job.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take,
+      include: {
+        _count: {
+          select: { batches: true },
+        },
+      },
+    });
+    return {
+      jobs: jobs.map((job) => ({
+        id: job.id,
+        status: job.status,
+        progress: job.progress,
+        sourceLang: job.sourceLang,
+        targetLangs: job.targetLangs,
+        batchSize: job.batchSize,
+        stringsTotal: job.stringsTotal,
+        batchTotal: job.batchTotal,
+        batchesCompleted: job._count.batches,
+        createdAt: job.createdAt.toISOString(),
+        updatedAt: job.updatedAt.toISOString(),
+        errorMessage: job.errorMessage,
+        resultUrls: job.resultUrls,
+        ...this.judgeThresholdFields(job),
+      })),
     };
   }
 

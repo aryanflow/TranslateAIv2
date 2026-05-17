@@ -16,10 +16,13 @@ async function main() {
     create: {
       id: DEV_TENANT_ID,
       name: 'Local development',
-      activeTranslator: 'gemini',
-      activeScorer: 'langdock',
+      activeTranslator: 'bedrock',
+      activeScorer: 'bedrock',
     },
-    update: {},
+    update: {
+      activeTranslator: 'bedrock',
+      activeScorer: 'bedrock',
+    },
   });
   console.log(`Dev tenant upserted: ${DEV_TENANT_ID}`);
 }

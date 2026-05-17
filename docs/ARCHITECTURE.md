@@ -61,10 +61,10 @@ aptos-translate-ai/
 │       │   ├── translation/      # Batching logic, orchestration
 │       │   ├── extractors/       # Streaming parsers (XML, JSON, CSV) for huge files
 │       │   ├── regenerators/     # File rebuilders (preserving symbols/structure)
-│       │   ├── llm/              # Gemini & Langdock REST adapters
+│       │   ├── llm/              # Amazon Bedrock (Converse API) adapters
 │       │   ├── prompts/          # [NEW] Prompt management DB service
 │       │   ├── glossary/         # [NEW] Terminology override service
-│       │   ├── scoring/          # Quality scoring via Langdock
+│       │   ├── scoring/          # Quality scoring via Bedrock
 │       │   ├── files/            # S3 presigned URL generation
 │       │   └── health/           # Model reachability & active model config
 │       └── prisma/
@@ -106,8 +106,8 @@ The orchestrator always loads **the pair** for the active job’s `sourceLang` �
 model Tenant {
   id               String   @id @default(uuid())
   name             String
-  activeTranslator String   @default("gemini")
-  activeScorer     String   @default("langdock")
+  activeTranslator String   @default("bedrock")
+  activeScorer     String   @default("bedrock")
   users            User[]
   jobs             Job[]
   promptTemplates  PromptTemplate[]
@@ -164,7 +164,7 @@ model User {
 | **GlossaryModule** | Term **preferences** (synonym disambiguation) | Maps source phrase → **preferred** target string so reviewers pick the *one* correct POS wording when synonyms exist. Injected as a block in the user prompt (and/or few-shot list). |
 | **ExtractorsModule** | Parsing unlimited files | Uses streaming parsers (e.g., `sax-js` for XML, `stream-json` for JSON) to parse files of any size without blowing up RAM. |
 | **RegeneratorsModule** | Rebuilding files | Strict logic to preserve original file structure, XML attributes, POS symbols, and placeholders exactly as they were. |
-| **LlmModule** | **Two** provider roles | **Translator** (e.g. Gemini): produces strings only. **Judge** (e.g. Langdock): scores/flags issues—**never** the same call as translate. Pluggable so instances can swap models via config. |
+| **LlmModule** | **Two** provider roles | **Translator** and **Judge** both use **Amazon Bedrock** (separate model IDs): translate produces JSON batches; judge scores—**never** the same combined call. |
 | **HealthModule** | Observability + control | Readiness: Postgres, Redis, S3, translator, judge. Latency percentiles, last error strings. `GET /version` (build). `PUT` active models per tenant. **No secrets** in responses. |
 
 ---
@@ -267,7 +267,7 @@ GET    /health/deps
            s3: { status: "up" },
            llm: {
              translator: { id: "gemini", status: "up", latencyMs: 45, p95Ms: 120, lastError: null },
-             judge: { id: "langdock", status: "degraded", latencyMs: 800, lastError: "HTTP 502" }
+             judge: { id: "bedrock", status: "degraded", latencyMs: 800, lastError: "ThrottlingException" }
            }
          }
 ```
@@ -276,7 +276,7 @@ GET    /health/deps
 
 ```
 PUT    /health/active-models
-       body: { translator: "gemini", scorer: "langdock" }
+       body: { translator: "bedrock", scorer: "bedrock" }
        → Validates providers exist; applies to `Tenant` for subsequent jobs.
 ```
 
@@ -374,7 +374,7 @@ These are product rules enforced in **prompts**, **validation**, and **judge** c
 2. **120k+ scale:** Chunks in BullMQ; horizontal workers; back-pressure via queue concurrency; **idempotent** batch processing where possible so retries do not double-apply.
 3. **Two LLM roles:** Translation and scoring use **separate** clients/config in code; different API keys/quotas; judge never reuses the translator’s completion as “ground truth” without a second call.
 4. **Retries:** Exponential backoff for 429/5xx; **re-translate** when validation or score fails, up to a cap; every terminal failure has a **machine-readable** `errorCode` for the UI and support.
-5. **Langdock (judge):** Token only on the server; only aggregate or redacted details returned to the client.
+5. **Bedrock (judge):** IAM-authenticated; only aggregate or redacted details returned to the client.
 
 ---
 

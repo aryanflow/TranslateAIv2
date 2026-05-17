@@ -83,6 +83,12 @@ export class JobsController {
     private readonly jobEventsService: JobEventsService,
   ) {}
 
+  @Get()
+  @ApiOperation({ summary: 'Recent translation jobs for this tenant' })
+  listJobs(@TenantId() tenantId: string) {
+    return this.jobs.listJobs(tenantId);
+  }
+
   @Post()
   @ApiOperation({
     summary:

@@ -108,7 +108,7 @@ export function extractExcel(
 
 export function regenerateExcel(
   originalFileBytes: Buffer,
-  translationMap: Record<string, string>,
+  tagTranslationMap: Record<string, string>,
   selectedSheet: string,
   selectedColumns?: string[],
 ): Buffer {
@@ -132,14 +132,15 @@ export function regenerateExcel(
     detectStringColumns(rows, columns);
   if (!cols.length) cols = columns;
 
-  const nextRows = rows.map((row) => {
+  const nextRows = rows.map((row, rowIdx) => {
     const copy = { ...row };
     for (const col of cols) {
       const raw = row[col];
       if (raw != null && typeof raw === 'string' && raw.trim()) {
-        const key = raw.trim();
-        if (Object.prototype.hasOwnProperty.call(translationMap, key)) {
-          copy[col] = translationMap[key];
+        const tag = `sheet_${selectedSheet}_row_${rowIdx}_col_${col}`;
+        const mapped = tagTranslationMap[tag];
+        if (mapped !== undefined) {
+          copy[col] = mapped;
         }
       }
     }

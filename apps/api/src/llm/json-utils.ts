@@ -1,4 +1,4 @@
-/** Extract first JSON object from model output (matches Python gemini/langdock parsers). */
+/** Extract first JSON object from model output (LLM JSON envelope parsing). */
 export function extractJsonObject(raw: string): string {
   let cleaned = raw.trim();
   if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7);

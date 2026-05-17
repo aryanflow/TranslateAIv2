@@ -61,9 +61,10 @@ export function extractJson(fileBytes: Buffer): {
   return { originals, tags, rawText: content };
 }
 
+/** Apply translations keyed by extractor tag paths (handles duplicate source strings). */
 export function regenerateJson(
   originalJson: string,
-  translationMap: Record<string, string>,
+  tagTranslationMap: Record<string, string>,
 ): string {
   let data: unknown;
   try {
@@ -74,45 +75,58 @@ export function regenerateJson(
     );
   }
 
-  function translateDict(
+  function applyDict(
     obj: Record<string, unknown>,
+    prefix: string,
   ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj)) {
-      if (typeof value === 'string') {
-        const translated = translationMap[value.trim()] ?? value;
-        result[key] = translated;
-      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-        result[key] = translateDict(value as Record<string, unknown>);
-      } else if (Array.isArray(value)) {
-        result[key] = translateList(value);
-      } else {
-        result[key] = value;
-      }
+      const path = prefix ? `${prefix}.${key}` : key;
+      result[key] = applyValue(value, path);
     }
     return result;
   }
 
-  function translateList(arr: unknown[]): unknown[] {
-    return arr.map((item) => {
-      if (typeof item === 'string') {
-        return translationMap[item.trim()] ?? item;
-      }
-      if (item && typeof item === 'object' && !Array.isArray(item)) {
-        return translateDict(item as Record<string, unknown>);
-      }
-      if (Array.isArray(item)) {
-        return translateList(item);
-      }
-      return item;
-    });
+  function applyValue(value: unknown, path: string): unknown {
+    if (typeof value === 'string') {
+      const t = value.trim();
+      if (!t) return value;
+      const mapped = tagTranslationMap[path];
+      return mapped !== undefined ? mapped : value;
+    }
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return applyDict(value as Record<string, unknown>, path);
+    }
+    if (Array.isArray(value)) {
+      return value.map((item, i) => {
+        const p = `${path}[${i}]`;
+        return applyArrayItem(item, p);
+      });
+    }
+    return value;
+  }
+
+  function applyArrayItem(item: unknown, path: string): unknown {
+    if (typeof item === 'string') {
+      const t = item.trim();
+      if (!t) return item;
+      const mapped = tagTranslationMap[path];
+      return mapped !== undefined ? mapped : item;
+    }
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      return applyDict(item as Record<string, unknown>, path);
+    }
+    if (Array.isArray(item)) {
+      return item.map((sub, j) => applyArrayItem(sub, `${path}[${j}]`));
+    }
+    return item;
   }
 
   let translatedData: unknown;
   if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
-    translatedData = translateDict(data as Record<string, unknown>);
+    translatedData = applyDict(data as Record<string, unknown>, '');
   } else if (Array.isArray(data)) {
-    translatedData = translateList(data);
+    translatedData = data.map((item, i) => applyArrayItem(item, `[${i}]`));
   } else {
     translatedData = data;
   }

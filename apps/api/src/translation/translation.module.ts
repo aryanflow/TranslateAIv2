@@ -9,7 +9,7 @@ import { JobEventsModule } from '../common/job-events/job-events.module';
 import { TranslationOrchestratorService } from './translation-orchestrator.service';
 
 /**
- * Batching orchestration, BullMQ consumers, and dual-LLM pipeline.
+ * Batching orchestration, BullMQ consumers, translate + judge (Bedrock) pipeline.
  */
 @Module({
   imports: [

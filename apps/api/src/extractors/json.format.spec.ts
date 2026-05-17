@@ -11,9 +11,9 @@ describe('json.format', () => {
     expect(tags.some((t) => t.includes('a.b'))).toBe(true);
   });
 
-  it('regenerates with translation map', () => {
+  it('regenerates JSON using extractor tag paths (duplicate-safe)', () => {
     const raw = JSON.stringify({ msg: 'Hi' }, null, 2);
-    const out = regenerateJson(raw, { Hi: 'Salut' });
+    const out = regenerateJson(raw, { msg: 'Salut' });
     const parsed = JSON.parse(out) as { msg: string };
     expect(parsed.msg).toBe('Salut');
   });

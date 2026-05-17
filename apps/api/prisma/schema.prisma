@@ -11,8 +11,8 @@ datasource db {
 model Tenant {
   id               String  @id @default(uuid())
   name             String
-  activeTranslator String  @default("gemini")
-  activeScorer     String  @default("langdock")
+  activeTranslator String  @default("bedrock")
+  activeScorer     String  @default("bedrock")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -59,6 +59,8 @@ model Job {
   minTranslationScore  Float? // tenant/env default when null; judge threshold
   maxBatchRetries      Int?      @default(3)
   progress             Float     @default(0) // 0–100, aggregate
+  stringsTotal         Int? // set after extract (chunking phase)
+  batchTotal           Int? // planned batches × targets for UI
   errorMessage         String?
   resultUrls           String[]  @default([])
   createdAt            DateTime  @default(now())

@@ -1,0 +1,30 @@
+# Copy to terraform.tfvars (gitignored) and adjust.
+# aws configure  # or export AWS_* env vars before running Terraform
+
+project_name = "translate-ai"
+environment  = "staging"
+aws_region   = "us-east-1"
+
+# Tags (optional): Project defaults to project_name; add cost/team tags as needed.
+# project_tag = "TranslateAI"
+# extra_tags = {
+#   Owner       = "platform"
+#   CostCenter  = "engineering"
+# }
+
+# Network
+vpc_cidr = "10.42.0.0/16"
+az_count = 2
+
+# Optional: tune cost / performance
+# postgres_instance_class = "db.t4g.small"
+# mq_host_instance_type   = "mq.t3.small"
+# batch_max_vcpus         = 32
+
+# Batch job image tag after you push to ECR
+batch_image_tag = "latest"
+
+# Example extra env for Batch jobs (secrets should come from Secrets Manager in production)
+# batch_container_environment = [
+#   { name = "NODE_ENV", value = "production" },
+# ]

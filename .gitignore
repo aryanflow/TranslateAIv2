@@ -28,6 +28,7 @@ yarn-error.log*
 apps/api/.env
 apps/api/.env.*
 !apps/api/.env.example
+apps/api/.env.deploy.generated
 apps/web/.env
 apps/web/.env.*
 !apps/web/.env.example
@@ -48,3 +49,14 @@ Thumbs.db
 # Deploy / local tooling
 .vercel/
 *.local
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+*_override.tf
+*.tfvars
+!*.tfvars.example

@@ -1,37 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { GeminiLangdockTranslatorService } from './gemini-langdock-translator.service';
-import { LangdockOpenAiTranslatorService } from './langdock-openai-translator.service';
-import type { TranslationExample } from './prompt-builder';
+import { BedrockTranslatorService } from './bedrock-translator.service';
+import type { TranslationCallContext } from './translation-context';
 
-export type TranslatorKind = 'gemini' | 'langdock';
+/** Stored on Tenant — legacy values map to Bedrock. */
+export type TranslatorKind = 'bedrock' | 'gemini' | 'langdock';
 
 @Injectable()
 export class TranslationRouterService {
-  constructor(
-    private readonly gemini: GeminiLangdockTranslatorService,
-    private readonly langdock: LangdockOpenAiTranslatorService,
-  ) {}
+  constructor(private readonly bedrock: BedrockTranslatorService) {}
 
   async translate(
     kind: TranslatorKind,
     texts: string[],
     language: string,
-    examples?: TranslationExample[] | null,
-    additionalContext?: string | null,
+    ctx?: TranslationCallContext,
   ): Promise<string[]> {
-    if (kind === 'gemini') {
-      return this.gemini.translate(
-        texts,
-        language,
-        examples,
-        additionalContext,
-      );
-    }
-    return this.langdock.translate(
-      texts,
-      language,
-      examples,
-      additionalContext,
-    );
+    void kind;
+    return this.bedrock.translate(texts, language, ctx);
   }
 }

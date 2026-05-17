@@ -2,5 +2,5 @@
 
 ## 0.0.1
 
-- Langdock-backed translation and scoring (OpenAI-compatible + Gemini via Langdock Google API).
+- Amazon Bedrock translation and scoring via Converse API; administrator prompt templates + selective target languages (`LANG_CONFIG`).
 - Version and changelog exposed under `GET /version` and `GET /version/changelog`.
