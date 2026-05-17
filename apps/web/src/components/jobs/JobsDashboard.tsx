@@ -74,6 +74,26 @@ export function JobsDashboard() {
     setJobs(data.jobs);
   }, [tenantOk]);
 
+  const hasActiveJobs = useMemo(() => {
+    const active = new Set([
+      "pending",
+      "extracting",
+      "chunking",
+      "translating",
+      "scoring",
+      "regenerating",
+    ]);
+    return jobs.some((j) => active.has(j.status));
+  }, [jobs]);
+
+  useEffect(() => {
+    if (!tenantOk || !hasActiveJobs) return;
+    const poll = window.setInterval(() => {
+      void fetchJobs().catch((e) => setError(formatApiError(e)));
+    }, 4500);
+    return () => window.clearInterval(poll);
+  }, [tenantOk, hasActiveJobs, fetchJobs]);
+
   useEffect(() => {
     if (!tenantOk) {
       setLoading(false);
@@ -155,13 +175,8 @@ export function JobsDashboard() {
       es.close();
     };
 
-    const poll = window.setInterval(() => {
-      void fetchJobs();
-    }, 5000);
-
     return () => {
       es.close();
-      window.clearInterval(poll);
     };
   }, [expandedId, tenantOk, fetchJobs]);
 
@@ -227,8 +242,8 @@ export function JobsDashboard() {
     <div className="mt-8 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-xl text-[13px] leading-relaxed text-[var(--muted)]">
-          Jobs persist across reloads. Open a row for live activity, batch counts, ETA, downloads,
-          and text preview (JSON/XML/CSV).
+          Jobs persist across reloads. In-flight lists refresh automatically; open a row for a live event
+          tail (SSE plus list sync). Expanded rows show batch ETA, downloads, and text preview.
         </p>
         <Button
           type="button"

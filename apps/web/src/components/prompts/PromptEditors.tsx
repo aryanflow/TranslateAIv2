@@ -226,7 +226,7 @@ export function PromptEditors() {
           disabled={!tenantOk || !baseline}
           onClick={resetToDefaults}
         >
-          Reset user + overlay to shipped defaults
+          Reset instructions to shipped default
         </Button>
         <Button
           type="button"
@@ -248,12 +248,11 @@ export function PromptEditors() {
         onToggle={(e) => setBaselineOpen((e.target as HTMLDetailsElement).open)}
       >
         <summary className="cursor-pointer select-none px-4 py-3 font-[family-name:var(--font-serif)] text-sm font-semibold text-[var(--fg)]">
-          Product-defined translator system prompt (read-only reference)
+          Built-in translator system prompt (reference)
         </summary>
         <div className="border-t border-[var(--edge)] px-4 py-3">
           <p className="mb-2 text-[12px] leading-relaxed text-[var(--muted)]">
-            This block ships with the API and is not editable in the database. Each job merges your
-            optional system overlay after this baseline.
+            Shipped with the API. Most teams rely on defaults and tune only the editable template below.
           </p>
           <pre className="max-h-[min(50vh,420px)] overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--edge)] bg-[var(--bg0)]/60 p-3 font-mono text-[11px] leading-relaxed text-[var(--muted-deep)]">
             {baseline?.globalTranslatorSystem ?? "…"}
@@ -261,49 +260,49 @@ export function PromptEditors() {
         </div>
       </details>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        {[
-          {
-            title: "Optional system overlay",
-            subtitle:
-              "Tenant policy appended after the fixed localization engine system prompt. Leave minimal when defaults suffice.",
-            value: systemText,
-            onChange: setSystemText,
-            foot: "Examples: forbidden terms, elevated register for a luxury brand.",
-          },
-          {
-            title: "Custom user template",
-            subtitle:
-              "Sections [A]/[B]/[C] merged into translator user payloads. Term preferences fill {{glossary_block}}; LANG_CONFIG fills {{terminology_reference}}.",
-            value: userText,
-            onChange: setUserText,
-            foot: "Variables: {{glossary_block}}, {{terminology_reference}}, {{source_lang}}, {{target_lang}}, {{target_language_name}}",
-          },
-        ].map((col, i) => (
-          <section
-            key={col.title}
-            className={cn(
-              "flex flex-col rounded-xl border border-[var(--edge)] bg-[var(--bg-elevated)]/50 p-5",
-              i === 1 && "motion-reduce:animate-none animate-in-delay-150 animate-in lg:animate-in-delay-1",
-              i === 0 && "motion-reduce:animate-none animate-in",
-            )}
-          >
-            <h2 className="font-[family-name:var(--font-serif)] text-lg font-bold tracking-tight text-[var(--fg)]">
-              {col.title}
-            </h2>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--muted)]">{col.subtitle}</p>
-            <textarea
-              className={cn(inputClass, "mt-4 min-h-[280px] flex-1")}
-              value={col.value}
-              onChange={(e) => col.onChange(e.target.value)}
-              spellCheck={false}
-              disabled={!tenantOk || loading}
-            />
-            <p className="mt-3 text-[11px] text-[var(--muted-deep)]">{col.foot}</p>
-          </section>
-        ))}
-      </div>
+      <section className="rounded-xl border border-[var(--edge)] bg-[var(--bg-elevated)]/50 p-5 motion-reduce:animate-none animate-in">
+        <h2 className="font-[family-name:var(--font-serif)] text-lg font-bold tracking-tight text-[var(--fg)]">
+          Instructions for this language pair
+        </h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--muted)]">
+          Injected ahead of each batch. Keep placeholders if you rely on tenant term preferences (
+          <code className="text-[11px] text-[var(--fg-soft)]">{"{{glossary_block}}"}</code>
+          ), target hints from LANG_CONFIG (
+          <code className="text-[11px] text-[var(--fg-soft)]">{"{{terminology_reference}}"}</code>
+          ), plus job language substitutions.
+        </p>
+        <textarea
+          className={cn(inputClass, "mt-4 min-h-[320px] w-full")}
+          value={userText}
+          onChange={(e) => setUserText(e.target.value)}
+          spellCheck={false}
+          disabled={!tenantOk || loading}
+        />
+        <p className="mt-3 text-[11px] leading-relaxed text-[var(--muted-deep)]">
+          Also filled automatically: {"{{source_lang}}"}, {"{{target_lang}}"},{" "}
+          {"{{target_language_name}}"} — tweak section [B] for brand tone or glossary callouts you want in
+          every run.
+        </p>
+      </section>
 
+      <details className="rounded-xl border border-dashed border-[var(--edge-bright)] bg-[var(--bg0)]/35">
+        <summary className="cursor-pointer select-none px-4 py-3 font-[family-name:var(--font-serif)] text-[13px] font-semibold text-[var(--fg-soft)]">
+          Advanced · extra system-layer policy (optional)
+        </summary>
+        <div className="space-y-3 border-t border-[var(--edge)] px-4 py-4">
+          <p className="text-[12px] leading-relaxed text-[var(--muted)]">
+            Rarely needed. Appended after the built-in localization system prompt — reserve for hardened
+            legal/security lines that belong in system context instead of editable instructions.
+          </p>
+          <textarea
+            className={cn(inputClass, "min-h-[140px] w-full")}
+            value={systemText}
+            onChange={(e) => setSystemText(e.target.value)}
+            spellCheck={false}
+            disabled={!tenantOk || loading}
+          />
+        </div>
+      </details>
       <details
         className="rounded-xl border border-dashed border-[var(--edge-bright)] bg-[var(--bg0)]/35"
         open={assembledOpen}
@@ -312,7 +311,7 @@ export function PromptEditors() {
         }
       >
         <summary className="cursor-pointer select-none px-4 py-3 text-[13px] font-medium text-[var(--fg-soft)]">
-          Preview assembled messages (batch CONFIG + JSON attach after template at runtime)
+          Preview approximate Bedrock payloads (instructions + rare system overlay + batch envelope)
         </summary>
         <pre className="max-h-[min(55vh,480px)] overflow-auto whitespace-pre-wrap border-t border-[var(--edge)] px-4 py-3 font-mono text-[11px] leading-relaxed text-[var(--muted-deep)]">
           {assemblePreview}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<localization>
+  <string name="greeting">
+    <original_string>Welcome to checkout</original_string>
+  </string>
+  <string name="sku_hint">
+    <original_string>Scan or enter SKU</original_string>
+  </string>
+  <string name="pay_cta">
+    <original_string>Pay now</original_string>
+  </string>
+</localization>

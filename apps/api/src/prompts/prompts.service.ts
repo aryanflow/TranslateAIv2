@@ -7,8 +7,7 @@ import { GLOBAL_TRANSLATOR_SYSTEM_PROMPT } from '../llm/enterprise-localization-
  * Optional tenant **system** overlay — appended after the fixed product localization engine prompt.
  * Leave blank to rely entirely on the shipped baseline.
  */
-const DEFAULT_SYSTEM = `You may add optional tenant-wide policy here (brand voice, forbidden terms, etc.).
-When empty, only the product-defined localization engine system prompt applies.`;
+const DEFAULT_SYSTEM = `Optional tenant policy merged after the product localization baseline. Leave empty unless hardened legal/security lines must sit in system context — most teams rely on Instructions only.`;
 
 const DEFAULT_USER = `────────────────────────────────────────────────────────────
 CUSTOM INSTRUCTIONS FOR THIS RUN

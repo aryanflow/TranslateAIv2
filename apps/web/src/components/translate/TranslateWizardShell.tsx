@@ -89,12 +89,96 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
+const FIXTURE_PREVIEW_CHAR_CAP = 28_000;
+
+function fixtureBasename(href: string): string {
+  const s = href.split("/").pop();
+  return s?.length ? s : "fixture.dat";
+}
+
+function fixtureMime(href: string): string {
+  const n = fixtureBasename(href).toLowerCase();
+  if (n.endsWith(".json")) return "application/json";
+  if (n.endsWith(".csv")) return "text/csv";
+  return "application/octet-stream";
+}
+
+function prettifyFixtureText(text: string, href: string): string {
+  if (!fixtureBasename(href).toLowerCase().endsWith(".json")) return text;
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+}
+
+function truncateFixturePeek(text: string): { shown: string; truncated: boolean } {
+  if (text.length <= FIXTURE_PREVIEW_CHAR_CAP) {
+    return { shown: text, truncated: false };
+  }
+  const rest = text.length - FIXTURE_PREVIEW_CHAR_CAP;
+  return {
+    shown: `${text.slice(0, FIXTURE_PREVIEW_CHAR_CAP)}\n\n… ${rest.toLocaleString()} more characters (preview truncated — still loads fully)`,
+    truncated: true,
+  };
+}
+
+const SAMPLE_FIXTURES = [
+  {
+    id: "pos-micro-json",
+    href: "/fixtures/fixture-pos-micro.json",
+    title: "Micro smoke",
+    subtitle: "Bare-bones nested POS",
+    detail: "Six leaf strings — quick extractor sanity.",
+    format: "JSON" as const,
+    approxStrings: "6",
+    intent: "Smoke",
+  },
+  {
+    id: "pos-123-json",
+    href: "/fixtures/fixture-pos-catalog-123.json",
+    title: "Retail catalog · JSON",
+    subtitle: "Staged POS / tender vocabulary",
+    detail: "123 register messages — rotates ~18 canonical patterns.",
+    format: "JSON" as const,
+    approxStrings: "123",
+    intent: "Recommended",
+  },
+  {
+    id: "pos-123-csv",
+    href: "/fixtures/fixture-pos-catalog-123.csv",
+    title: "Retail catalog · CSV",
+    subtitle: "Flat key column + American English text",
+    detail: "123 rows aligned to the JSON 123-set.",
+    format: "CSV" as const,
+    approxStrings: "123",
+    intent: "Recommended",
+  },
+  {
+    id: "pos-200-json",
+    href: "/fixtures/fixture-pos-catalog-200.json",
+    title: "Volume catalog · JSON",
+    subtitle: "High-cardinality catalogue copy",
+    detail: "200 distinct retail prompts — tenders, pickups, integrations, audits.",
+    format: "JSON" as const,
+    approxStrings: "200",
+    intent: "Scale",
+  },
+] as const;
+
+type FixtureTile = (typeof SAMPLE_FIXTURES)[number];
+
+type ImportProvenance =
+  | { kind: "fixture"; href: string; displayName: string; format: "JSON" | "CSV"; approxStrings: string }
+  | { kind: "upload"; displayName: string };
+
 /** Upload → extract preview → single target → job + resilient progress UX */
 export function TranslateWizardShell() {
   const [localFileName, setLocalFileName] = useState<string | null>(null);
   const [fileKey, setFileKey] = useState<string | null>(null);
   const [ingestPhase, setIngestPhase] = useState<IngestPhase>("idle");
   const [previewPayload, setPreviewPayload] = useState<PreviewPayload | null>(null);
+  const [importProvenance, setImportProvenance] = useState<ImportProvenance | null>(null);
   const [sourceLang, setSourceLang] = useState<string>("american_english");
   const [targetLang, setTargetLang] = useState<string>("spanish");
   const [batchSize, setBatchSize] = useState(80);
@@ -105,6 +189,74 @@ export function TranslateWizardShell() {
   const [jobLive, setJobLive] = useState<JobPollState | null>(null);
 
   const tenantOk = useMemo(() => TENANT_ID.length > 0, []);
+
+  const [fixturePeek, setFixturePeek] = useState<FixtureTile | null>(null);
+  const [fixtureBlob, setFixtureBlob] = useState<Blob | null>(null);
+  const [fixturePeekText, setFixturePeekText] = useState("");
+  const [fixturePeekTruncated, setFixturePeekTruncated] = useState(false);
+  const [fixturePeekLoading, setFixturePeekLoading] = useState(false);
+  const [fixturePeekError, setFixturePeekError] = useState<string | null>(null);
+  /** Off by default — no chunky “collapsed” disclosure in the main wizard chrome. */
+  const [fixtureDemosOpen, setFixtureDemosOpen] = useState(false);
+
+  const closeFixturePeek = useCallback(() => {
+    setFixturePeek(null);
+    setFixtureBlob(null);
+    setFixturePeekText("");
+    setFixturePeekTruncated(false);
+    setFixturePeekLoading(false);
+    setFixturePeekError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!fixturePeek) return;
+
+    let cancelled = false;
+    setFixturePeekLoading(true);
+    setFixturePeekError(null);
+    setFixtureBlob(null);
+
+    void (async () => {
+      try {
+        const res = await fetch(fixturePeek.href);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        setFixtureBlob(blob);
+        const raw = await blob.text();
+        if (cancelled) return;
+        const pretty = prettifyFixtureText(raw, fixturePeek.href);
+        const { shown, truncated } = truncateFixturePeek(pretty);
+        setFixturePeekText(shown);
+        setFixturePeekTruncated(truncated);
+      } catch (e) {
+        if (!cancelled) {
+          setFixturePeekError(e instanceof Error ? e.message : "Could not load fixture");
+          setFixturePeekText("");
+        }
+      } finally {
+        if (!cancelled) setFixturePeekLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fixturePeek]);
+
+  useEffect(() => {
+    if (!fixturePeek) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") closeFixturePeek();
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [fixturePeek, closeFixturePeek]);
 
   useEffect(() => {
     if (targetLang !== sourceLang) return;
@@ -122,11 +274,12 @@ export function TranslateWizardShell() {
     return (await res.json()) as PreviewPayload;
   }, []);
 
-  const ingestFile = async (file: File | null) => {
+  const ingestFile = async (file: File | null, fromFixture?: FixtureTile | null) => {
     setError(null);
     setPreviewPayload(null);
     setFileKey(null);
     setLocalFileName(file?.name ?? null);
+    setImportProvenance(null);
     setIngestPhase("idle");
     setActiveJobId(null);
     setJobLive(null);
@@ -163,6 +316,17 @@ export function TranslateWizardShell() {
       const pv = await fetchPreviewForKey(key);
       setPreviewPayload(pv);
       setIngestPhase("ready");
+      if (fromFixture) {
+        setImportProvenance({
+          kind: "fixture",
+          href: fromFixture.href,
+          displayName: fixtureBasename(fromFixture.href),
+          format: fromFixture.format,
+          approxStrings: fromFixture.approxStrings,
+        });
+      } else {
+        setImportProvenance({ kind: "upload", displayName: file.name });
+      }
     } catch (e) {
       setIngestPhase("error");
       setError(formatApiError(e));
@@ -254,15 +418,30 @@ export function TranslateWizardShell() {
     }
   };
 
+  const ingestFromFixturePeek = async () => {
+    if (!fixturePeek || !fixtureBlob || !tenantOk) return;
+    const tile = fixturePeek;
+    const name = fixtureBasename(tile.href);
+    const file = new File([fixtureBlob], name, {
+      type: fixtureMime(tile.href),
+    });
+    closeFixturePeek();
+    await ingestFile(file, tile);
+  };
+
   const ingestLabel =
     ingestPhase === "idle"
-      ? "Choose a file to begin."
+      ? ""
       : ingestPhase === "uploading"
-        ? "Uploading…"
+        ? localFileName
+          ? `Uploading · ${localFileName}…`
+          : "Uploading…"
         : ingestPhase === "previewing"
           ? "Extracting strings…"
           : ingestPhase === "ready"
-            ? "Ready — strings extracted."
+            ? importProvenance?.kind === "fixture"
+              ? `Ready — catalogue from sample · ${importProvenance.displayName}${previewPayload ? ` (${previewPayload.totalStrings.toLocaleString()} strings)` : ""}.`
+              : `Ready — ${localFileName ?? "your catalog"}${previewPayload ? ` (${previewPayload.totalStrings.toLocaleString()} strings)` : ""}.`
             : "Could not ingest file.";
 
   return (
@@ -281,24 +460,158 @@ export function TranslateWizardShell() {
         </p>
       ) : null}
 
-      <StepCard step={1} title="Source file" className="animate-in-delay-1">
-        <p className="text-[13px] leading-relaxed text-[var(--muted)]">
-          As soon as you pick a catalog we upload it, extract strings with the same engine as jobs,
-          and tuck them into a collapsible list below. Fixtures:{" "}
-          <code className="rounded bg-[var(--panel)] px-1 py-0.5 font-mono text-[11px]">
-            samples/strings-sample.json
-          </code>
-          ,{" "}
-          <code className="rounded bg-[var(--panel)] px-1 py-0.5 font-mono text-[11px]">
-            strings-sample-200.json
-          </code>
-          ,{" "}
-          <code className="rounded bg-[var(--panel)] px-1 py-0.5 font-mono text-[11px]">
-            strings-sample.csv
-          </code>
-          .
-        </p>
-        <div className="flex flex-wrap items-center gap-3 pt-2">
+      <StepCard step={1} title="Import catalogue" className="animate-in-delay-1">
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-[var(--muted)]">
+            Browse JSON, CSV, XML, or XLSX — presign and extractor handle every format the same way.
+          </p>
+          {tenantOk ? (
+            <button
+              type="button"
+              onClick={() => setFixtureDemosOpen((o) => !o)}
+              className={cn(
+                "shrink-0 self-start text-left text-[11px] leading-snug text-[var(--muted)] underline decoration-[color:var(--edge-bright)] decoration-1 underline-offset-[0.22em]",
+                "transition hover:text-[var(--fg-soft)] motion-reduce:transition-none sm:text-right",
+              )}
+              aria-expanded={fixtureDemosOpen}
+            >
+              {fixtureDemosOpen ? (
+                <>
+                  Hide <span className="text-[var(--fg-soft)]">bundled Peek</span>
+                </>
+              ) : (
+                <>
+                  Peek <span className="text-[var(--fg-soft)]">bundled</span> JSON/CSV
+                </>
+              )}
+            </button>
+          ) : null}
+        </div>
+
+        {importProvenance?.kind === "fixture" && !fixtureDemosOpen ? (
+          <p className="mt-2 text-[11px] leading-relaxed text-[var(--muted)]">
+            Imported from bundle{" "}
+            <code className="rounded bg-[var(--panel)] px-1 py-0.5 font-mono text-[10px] text-[var(--fg-soft)]">
+              {importProvenance.displayName}
+            </code>
+            . Toggle <span className="text-[var(--fg-soft)]">Peek bundled</span> to switch samples.
+          </p>
+        ) : null}
+
+        {fixtureDemosOpen ? (
+          <section className="mt-4 rounded-lg border border-[var(--edge)] bg-[var(--panel)]/25" aria-label="Bundled Peek fixtures">
+            <div className="space-y-2 border-t-0 px-3 pb-3 pt-2.5 sm:px-3.5 sm:pb-3.5 sm:pt-2.5">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-[var(--muted)]">
+              <span>Nominal labels on tiles · extractor totals after load are authoritative.</span>
+              <span aria-hidden className="hidden text-[var(--edge-bright)] sm:inline">
+                ·
+              </span>
+              <span className="hidden sm:inline">Corner icon: offline copy.</span>
+              <span className="ml-auto shrink-0 rounded bg-[var(--bg0)]/85 px-1.5 py-px font-mono text-[9px] text-[var(--muted-deep)]">
+                XML · XLSX → Browse only
+              </span>
+            </div>
+          <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden">
+            {SAMPLE_FIXTURES.map((sample) => {
+              const ingestBusy = ingestPhase === "uploading" || ingestPhase === "previewing";
+              const sampleActive =
+                importProvenance?.kind === "fixture" && importProvenance.href === sample.href;
+              return (
+                <div key={sample.id} className="group/card relative flex-[0_0_auto] sm:flex-[0_1_auto]">
+                  <button
+                    type="button"
+                    disabled={!tenantOk || ingestBusy}
+                    title={`${sample.subtitle}. ${sample.detail}`}
+                    onClick={() => setFixturePeek(sample)}
+                    className={cn(
+                      "w-[min(100%,11.25rem)] rounded-lg border bg-[var(--bg0)]/70 px-2.5 pb-2 pt-2.5 text-left text-[var(--fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition sm:min-w-0 sm:max-w-[11.25rem] sm:w-auto",
+                      sampleActive
+                        ? "border-[var(--accent)]/55 ring-2 ring-[var(--accent)]/25"
+                        : "border-[var(--edge-bright)] hover:border-[var(--accent-muted)] hover:shadow-[0_12px_36px_-24px_rgba(0,0,0,0.75)] motion-reduce:transition-none",
+                      (!tenantOk || ingestBusy) && "cursor-not-allowed opacity-50",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-1.5">
+                      <span className="rounded border border-[var(--edge)] bg-[var(--panel)] px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-[var(--fg-soft)]">
+                        {sample.format}
+                      </span>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-muted)] transition group-hover:text-[var(--accent)]">
+                        Peek
+                      </span>
+                    </div>
+                    <span className="mt-1.5 block font-[family-name:var(--font-serif)] text-[12px] font-bold leading-tight tracking-tight">
+                      {sample.title}
+                    </span>
+                    <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-[var(--muted)]">
+                      <span className="text-[var(--fg-soft)]">{sample.subtitle}</span>
+                      <span aria-hidden className="mx-1 text-[var(--edge)]">
+                        ·
+                      </span>
+                      {sample.detail}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                      <span className="rounded border border-[var(--edge)] px-1.5 py-px font-mono text-[9px] tabular-nums text-[var(--muted)]">
+                        {sample.approxStrings}&nbsp;nom.
+                      </span>
+                      {sample.intent === "Recommended" ? (
+                        <span className="rounded border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06] px-1.5 py-px font-mono text-[9px] text-[var(--accent-muted)]">
+                          Crew
+                        </span>
+                      ) : sample.intent === "Smoke" ? (
+                        <span className="rounded border border-[var(--edge-bright)] px-1.5 py-px font-mono text-[9px] text-[var(--muted-deep)]">
+                          Quick
+                        </span>
+                      ) : sample.intent === "Scale" ? (
+                        <span className="rounded border border-[var(--edge)] px-1.5 py-px font-mono text-[9px] text-[var(--muted)]">
+                          Volume
+                        </span>
+                      ) : null}
+                    </div>
+                    {sampleActive ? (
+                      <p className="mt-2 border-t border-dashed border-[var(--accent)]/30 pt-2 text-[9px] font-medium uppercase tracking-wide text-[var(--accent-muted)]">
+                        Active · flows as-is
+                      </p>
+                    ) : (
+                      <span className="sr-only">Opens a full-screen artifact preview.</span>
+                    )}
+                  </button>
+                  <a
+                    href={sample.href}
+                    download={fixtureBasename(sample.href)}
+                    title="Save offline copy"
+                    aria-label={`Download ${sample.title}`}
+                    tabIndex={0}
+                    className={cn(
+                      "pointer-events-none absolute right-1.5 top-1.5 z-[1] rounded border border-[var(--edge-bright)] bg-[var(--bg0)] p-1 text-[var(--fg-soft)] opacity-0 shadow-sm transition",
+                      "hover:border-[var(--accent-muted)] hover:text-[var(--fg)]",
+                      "group-hover/card:pointer-events-auto group-hover/card:opacity-100",
+                      "group-focus-within/card:pointer-events-auto group-focus-within/card:opacity-100",
+                      "motion-reduce:pointer-events-auto motion-reduce:opacity-70",
+                    )}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      className="h-4 w-4"
+                      aria-hidden
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14" />
+                    </svg>
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+          </div>
+          </section>
+        ) : null}
+
+        <div className="mt-6 flex flex-wrap items-center gap-3">
           <input
             type="file"
             accept=".xml,.json,.csv,.xlsx,.xls"
@@ -306,7 +619,9 @@ export function TranslateWizardShell() {
             disabled={ingestPhase === "uploading" || ingestPhase === "previewing"}
             onChange={(e) => void ingestFile(e.target.files?.[0] ?? null)}
           />
-          <span className="text-[12px] text-[var(--muted-deep)]">{ingestLabel}</span>
+          {ingestLabel ? (
+            <span className="text-[12px] text-[var(--muted-deep)]">{ingestLabel}</span>
+          ) : null}
         </div>
 
         {previewPayload ? (
@@ -319,6 +634,18 @@ export function TranslateWizardShell() {
                     ({previewPayload.totalStrings.toLocaleString()} total
                     {previewPayload.previewTruncated ? ", preview capped" : ""})
                   </span>
+                  {importProvenance?.kind === "fixture" ? (
+                    <span className="ml-2 rounded-md border border-[var(--accent)]/35 bg-[var(--accent)]/[0.06] px-2 py-0.5 align-middle font-mono text-[10px] font-normal uppercase tracking-wide text-[var(--accent-muted)]">
+                      Sample · {importProvenance.approxStrings}
+                    </span>
+                  ) : importProvenance?.kind === "upload" ? (
+                    <span
+                      title={importProvenance.displayName}
+                      className="ml-2 max-w-[14rem] truncate rounded-md border border-[var(--edge-bright)] bg-[var(--panel)]/70 px-2 py-0.5 align-middle font-mono text-[10px] font-normal uppercase tracking-wide text-[var(--muted)]"
+                    >
+                      Your upload · {importProvenance.displayName}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="rounded-md border border-[var(--edge-bright)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[var(--muted)]">
                   {previewPayload.format}
@@ -480,6 +807,136 @@ export function TranslateWizardShell() {
                   </>
                 ) : null}
               </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {fixturePeek ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="fixturepeek-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-[var(--panel)]/85 backdrop-blur-sm"
+            aria-label="Close preview"
+            onClick={closeFixturePeek}
+          />
+          <div
+            className="relative z-[1] flex max-h-[min(92vh,900px)] w-full max-w-[min(96vw,760px)] flex-col overflow-hidden rounded-2xl border border-[var(--edge)] bg-[var(--bg-elevated)] shadow-[0_32px_120px_-48px_rgba(0,0,0,0.9)]"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--edge)] px-5 py-3.5">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                  <span className="rounded-md border border-[var(--edge)] bg-[var(--panel)] px-2 py-0.5 text-[var(--fg-soft)]">
+                    {fixturePeek.format}
+                  </span>
+                  <span aria-hidden className="text-[var(--muted-deep)]">
+                    ·
+                  </span>
+                  <span className="tabular-nums">
+                    nominal {fixturePeek.approxStrings}&nbsp;strings
+                  </span>
+                  <span aria-hidden className="text-[var(--muted-deep)]">
+                    ·
+                  </span>
+                  <span className="max-w-[min(52vw,20rem)] truncate normal-case tracking-normal text-[var(--muted-deep)]">
+                    {fixtureBasename(fixturePeek.href)}
+                  </span>
+                </div>
+                <div>
+                  <p
+                    id="fixturepeek-title"
+                    className="font-[family-name:var(--font-serif)] text-xl font-bold tracking-tight text-[var(--fg)]"
+                  >
+                    {fixturePeek.title}
+                  </p>
+                  <p className="text-[12px] font-medium leading-snug text-[var(--fg-soft)]">
+                    {fixturePeek.subtitle}
+                  </p>
+                  <p className="sr-only">
+                    Peek is read-only. Load runs the Browse upload pipeline.
+                  </p>
+                  <p className="mt-1 hidden text-[11px] leading-relaxed text-[var(--muted-deep)] text-balance sm:block">
+                    Peek is read-only. Load routes through Browse’s presigner. Escape closes.
+                  </p>
+                </div>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={closeFixturePeek}>
+                Close
+              </Button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {fixturePeekLoading ? (
+                <p className="px-5 py-12 text-center text-[13px] text-[var(--muted)]">Staging sample…</p>
+              ) : fixturePeekError ? (
+                <p className="px-5 py-12 text-center text-[13px] text-red-200/90">{fixturePeekError}</p>
+              ) : (
+                <>
+                  {fixturePeekTruncated ? (
+                    <p className="border-b border-[var(--edge)] bg-[var(--panel)]/50 px-5 py-2 text-[11px] text-[var(--muted)]">
+                      Large file — showing the first {FIXTURE_PREVIEW_CHAR_CAP.toLocaleString()} characters in
+                      this pane; loading still uses the full catalog.
+                    </p>
+                  ) : null}
+                  <pre className="max-h-[min(54vh,620px)] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-[11px] leading-relaxed text-[var(--fg-soft)]">
+                    {fixturePeekText}
+                  </pre>
+                </>
+              )}
+            </div>
+
+            <div className="border-t border-[var(--edge)] bg-[var(--bg0)]/40 px-5 py-4">
+              <details className="group/save rounded-lg border border-dashed border-[var(--edge-bright)] bg-[var(--panel)]/30">
+                <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-[var(--muted)] transition group-open/save:text-[var(--fg-soft)] [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      className="inline-block rotate-0 text-[var(--muted-deep)] transition group-open/save:rotate-90"
+                      aria-hidden
+                    >
+                      ▸
+                    </span>
+                    Keep a local copy
+                  </span>
+                </summary>
+                <div className="border-t border-[var(--edge)] px-3 py-2.5">
+                  <p className="mb-2 text-[11px] leading-relaxed text-[var(--muted)]">
+                    Same file the peek shows — attach to tickets or diff locally.
+                  </p>
+                  <a
+                    href={fixturePeek.href}
+                    download={fixtureBasename(fixturePeek.href)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-[var(--edge)] bg-[var(--bg0)] px-3 py-1.5 text-[12px] font-medium text-[var(--fg)] transition hover:border-[var(--accent-muted)]"
+                  >
+                    Download {fixtureBasename(fixturePeek.href)}
+                  </a>
+                </div>
+              </details>
+
+              <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={closeFixturePeek}>
+                  Dismiss
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    !tenantOk ||
+                    !fixtureBlob ||
+                    fixturePeekLoading ||
+                    Boolean(fixturePeekError) ||
+                    ingestPhase === "uploading" ||
+                    ingestPhase === "previewing"
+                  }
+                  onClick={() => void ingestFromFixturePeek()}
+                >
+                  Load into wizard
+                </Button>
+              </div>
             </div>
           </div>
         </div>

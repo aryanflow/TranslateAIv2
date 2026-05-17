@@ -10,7 +10,7 @@ export default function SignInPage() {
           Welcome back
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
-          Auth.js (Google) and tenant mapping ship in the next slice. For now this is a visual shell.
+          This screen is static in the current workspace build — use Skip to workspace for the dashboard.
         </p>
         <Button className="mt-8 w-full" type="button" variant="outline" disabled>
           Continue with Google
