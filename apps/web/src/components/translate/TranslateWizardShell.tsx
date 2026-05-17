@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import gsap from "gsap";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LANG_OPTIONS, langLabel } from "@/lib/lang-options";
 import {
@@ -26,23 +29,113 @@ function StepCard({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "animate-in relative overflow-hidden rounded-xl border border-[var(--edge)] bg-gradient-to-b from-[var(--bg-elevated)]/90 to-[var(--panel)]/80 p-5 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]",
-        className,
-      )}
-    >
+    <Card className={cn("tw-wizard-stagger group/step shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]", className)}>
       <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-[var(--accent)]/[0.04] blur-2xl" />
-      <div className="relative flex gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--edge-bright)] bg-[var(--bg0)] font-[family-name:var(--font-serif)] text-sm font-extrabold text-[var(--accent)]">
+      <CardHeader className="relative flex flex-row items-start gap-4 space-y-0 pb-2">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--edge-bright)] bg-[var(--bg0)] font-[family-name:var(--font-serif)] text-sm font-extrabold text-[var(--accent)] transition-transform duration-300 ease-out group-hover/step:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover/step:scale-100">
           {step}
         </div>
-        <div className="min-w-0 flex-1 space-y-3">
-          <h2 className="text-sm font-semibold tracking-tight text-[var(--fg)]">{title}</h2>
-          {children}
+        <div className="min-w-0 flex-1 space-y-1">
+          <CardTitle className="text-[15px] font-semibold tracking-tight sm:text-base">{title}</CardTitle>
         </div>
-      </div>
-    </div>
+      </CardHeader>
+      <CardContent className="relative space-y-3 pt-0">{children}</CardContent>
+    </Card>
+  );
+}
+
+function WizardRail({
+  ingestPhase,
+  activeJobId,
+}: {
+  ingestPhase: IngestPhase;
+  activeJobId: string | null;
+}) {
+  const catalogue =
+    ingestPhase === "ready"
+      ? "complete"
+      : ingestPhase === "error"
+        ? "error"
+        : ingestPhase === "idle"
+          ? "upcoming"
+          : "active";
+  const pipeline =
+    ingestPhase !== "ready" ? "upcoming" : activeJobId ? "complete" : "active";
+  const run = activeJobId ? "active" : "upcoming";
+
+  const dot = (state: "upcoming" | "active" | "complete" | "error") =>
+    cn(
+      "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold tabular-nums transition-[border-color,background-color,color,box-shadow] duration-300 motion-reduce:transition-none",
+      state === "upcoming" &&
+        "border-[var(--edge)] bg-[var(--bg0)]/80 text-[var(--muted-deep)]",
+      state === "active" &&
+        "border-[var(--accent-muted)] bg-[var(--accent)]/[0.12] text-[var(--accent)] shadow-[0_0_0_1px_rgba(212,175,92,0.15)]",
+      state === "complete" &&
+        "border-[var(--ok)]/35 bg-[var(--ok)]/[0.08] text-[var(--ok)]",
+      state === "error" && "border-[var(--danger)]/45 bg-[var(--danger)]/[0.08] text-[var(--danger)]",
+    );
+
+  return (
+    <nav
+      className="tw-wizard-stagger rounded-xl border border-[var(--edge)] bg-[var(--panel)]/40 px-4 py-3.5 backdrop-blur-[2px] sm:px-5"
+      aria-label="Translation workflow"
+    >
+      <ol className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+        <li className="flex min-w-0 flex-1 items-center gap-3 sm:flex-[1_1_0]">
+          <span className={dot(catalogue)} aria-hidden>
+            {catalogue === "complete" ? "✓" : "1"}
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-deep)]">
+              Catalogue
+            </p>
+            <p className="truncate text-[12px] text-[var(--muted)]">
+              {ingestPhase === "uploading" || ingestPhase === "previewing"
+                ? "Upload & extract"
+                : ingestPhase === "ready"
+                  ? "Strings ready"
+                  : ingestPhase === "error"
+                    ? "Fix upload & retry"
+                    : "Upload or sample"}
+            </p>
+          </div>
+        </li>
+        <span
+          className="hidden h-px w-6 shrink-0 bg-gradient-to-r from-transparent via-[var(--edge-bright)] to-transparent sm:block sm:h-6 sm:w-px sm:bg-[var(--edge-bright)]"
+          aria-hidden
+        />
+        <li className="flex min-w-0 flex-1 items-center gap-3 sm:flex-[1_1_0]">
+          <span className={dot(pipeline)} aria-hidden>
+            {pipeline === "complete" ? "✓" : "2"}
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-deep)]">
+              Languages
+            </p>
+            <p className="truncate text-[12px] text-[var(--muted)]">
+              {ingestPhase === "ready" ? "Source → target & batching" : "Unlocks after extract"}
+            </p>
+          </div>
+        </li>
+        <span
+          className="hidden h-px w-6 shrink-0 bg-gradient-to-r from-transparent via-[var(--edge-bright)] to-transparent sm:block sm:h-6 sm:w-px sm:bg-[var(--edge-bright)]"
+          aria-hidden
+        />
+        <li className="flex min-w-0 flex-1 items-center gap-3 sm:flex-[1_1_0]">
+          <span className={dot(run)} aria-hidden>
+            3
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-deep)]">
+              Translation job
+            </p>
+            <p className="truncate text-[12px] text-[var(--muted)]">
+              {activeJobId ? "Running — progress on Jobs" : "Start when catalogue is ready"}
+            </p>
+          </div>
+        </li>
+      </ol>
+    </nav>
   );
 }
 
@@ -177,6 +270,11 @@ const SAMPLE_FIXTURES = [
   },
 ] as const;
 
+function gsapMotionOk(): boolean {
+  if (typeof window === "undefined") return false;
+  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 type FixtureTile = (typeof SAMPLE_FIXTURES)[number];
 
 type ImportProvenance =
@@ -215,6 +313,58 @@ export function TranslateWizardShell() {
   const [fixturePeekError, setFixturePeekError] = useState<string | null>(null);
   /** Off by default — no chunky “collapsed” disclosure in the main wizard chrome. */
   const [fixtureDemosOpen, setFixtureDemosOpen] = useState(false);
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const jobLivePanelRef = useRef<HTMLDivElement>(null);
+  const fixturePanelRef = useRef<HTMLDivElement>(null);
+  const lastAnimatedJobId = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    if (!gsapMotionOk()) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const nodes = root.querySelectorAll(".tw-wizard-stagger");
+    if (!nodes.length) return;
+    const ctx = gsap.context(() => {
+      gsap.from(nodes, {
+        opacity: 0,
+        y: 22,
+        duration: 0.58,
+        stagger: 0.09,
+        ease: "power3.out",
+        clearProps: "opacity,transform",
+      });
+    }, root);
+    return () => ctx.revert();
+  }, [tenantOk]);
+
+  useEffect(() => {
+    if (!activeJobId) lastAnimatedJobId.current = null;
+  }, [activeJobId]);
+
+  useLayoutEffect(() => {
+    if (!gsapMotionOk() || !activeJobId || !jobLive) return;
+    const panel = jobLivePanelRef.current;
+    if (!panel) return;
+    if (lastAnimatedJobId.current === activeJobId) return;
+    lastAnimatedJobId.current = activeJobId;
+    gsap.fromTo(
+      panel,
+      { opacity: 0, y: 18, scale: 0.985 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.48, ease: "power2.out", clearProps: "opacity,transform" },
+    );
+  }, [activeJobId, jobLive]);
+
+  useLayoutEffect(() => {
+    if (!fixturePeek || !gsapMotionOk()) return;
+    const panel = fixturePanelRef.current;
+    if (!panel) return;
+    gsap.fromTo(
+      panel,
+      { opacity: 0, y: 20, scale: 0.96 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "power3.out" },
+    );
+  }, [fixturePeek]);
 
   const closeFixturePeek = useCallback(() => {
     setFixturePeek(null);
@@ -462,7 +612,7 @@ export function TranslateWizardShell() {
             : "Could not ingest file.";
 
   return (
-    <div className="mt-10 space-y-5">
+    <div ref={rootRef} className="mt-10 space-y-5">
       {!tenantOk ? (
         <p className="rounded-lg border border-[var(--edge)] bg-[var(--bg0)]/80 px-4 py-3 text-[13px] text-[var(--muted)]">
           Add{" "}
@@ -477,7 +627,9 @@ export function TranslateWizardShell() {
         </p>
       ) : null}
 
-      <StepCard step={1} title="Import catalogue" className="animate-in-delay-1">
+      {tenantOk ? <WizardRail ingestPhase={ingestPhase} activeJobId={activeJobId} /> : null}
+
+      <StepCard step={1} title="Import catalogue">
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-[var(--muted)]">
             Browse JSON, CSV, XML, or XLSX — presign and extractor handle every format the same way.
@@ -685,7 +837,7 @@ export function TranslateWizardShell() {
         ) : null}
       </StepCard>
 
-      <StepCard step={2} title="Language & pipeline" className="animate-in-delay-2">
+      <StepCard step={2} title="Language & pipeline">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-1.5">
             <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted-deep)]">
@@ -747,7 +899,7 @@ export function TranslateWizardShell() {
         </p>
       </StepCard>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="tw-wizard-stagger flex flex-wrap items-center gap-3">
         <Button
           type="button"
           size="sm"
@@ -769,7 +921,10 @@ export function TranslateWizardShell() {
       </div>
 
       {activeJobId && jobLive ? (
-        <div className="animate-in relative overflow-hidden rounded-xl border border-[var(--accent)]/35 bg-[var(--accent)]/[0.06] p-5 shadow-[0_12px_48px_-24px_rgba(212,175,92,0.55)]">
+        <div
+          ref={jobLivePanelRef}
+          className="relative overflow-hidden rounded-xl border border-[var(--accent)]/35 bg-[var(--accent)]/[0.06] p-5 shadow-[0_12px_48px_-24px_rgba(212,175,92,0.55)]"
+        >
           <div className="pointer-events-none absolute -left-16 top-1/2 h-48 w-48 -translate-y-1/2 rounded-full bg-[var(--accent)]/[0.07] blur-3xl" />
           <div className="relative flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="flex gap-3">
@@ -829,22 +984,24 @@ export function TranslateWizardShell() {
         </div>
       ) : null}
 
-      {fixturePeek ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="fixturepeek-title"
-        >
-          <button
-            type="button"
-            className="absolute inset-0 bg-[var(--panel)]/85 backdrop-blur-sm"
-            aria-label="Close preview"
-            onClick={closeFixturePeek}
-          />
-          <div
-            className="relative z-[1] flex max-h-[min(92vh,900px)] w-full max-w-[min(96vw,760px)] flex-col overflow-hidden rounded-2xl border border-[var(--edge)] bg-[var(--bg-elevated)] shadow-[0_32px_120px_-48px_rgba(0,0,0,0.9)]"
-          >
+      {fixturePeek && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[500] flex items-center justify-center p-4 sm:p-8"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="fixturepeek-title"
+            >
+              <button
+                type="button"
+                className="absolute inset-0 bg-[var(--panel)]/85 backdrop-blur-sm"
+                aria-label="Close preview"
+                onClick={closeFixturePeek}
+              />
+              <div
+                ref={fixturePanelRef}
+                className="relative z-[1] flex max-h-[min(92vh,900px)] w-full max-w-[min(96vw,760px)] flex-col overflow-hidden rounded-2xl border border-[var(--edge)] bg-[var(--bg-elevated)] shadow-[0_32px_120px_-48px_rgba(0,0,0,0.9)]"
+              >
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--edge)] px-5 py-3.5">
               <div className="min-w-0 flex-1 space-y-2">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-wide text-[var(--muted)]">
@@ -956,8 +1113,10 @@ export function TranslateWizardShell() {
               </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+            document.body,
+          )
+        : null}
 
       {error ? (
         <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-[13px] text-red-200">

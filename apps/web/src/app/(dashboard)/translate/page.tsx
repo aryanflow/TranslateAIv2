@@ -4,10 +4,14 @@ import { TranslateWizardShell } from "@/components/translate/TranslateWizardShel
 export default function TranslatePage() {
   return (
     <div className="animate-in">
+      <div
+        className="pointer-events-none mb-6 h-px w-full max-w-lg bg-gradient-to-r from-[var(--accent)]/55 via-[var(--edge-bright)] to-transparent"
+        aria-hidden
+      />
       <PageHeader
         eyebrow="Localization"
         title="New translation"
-        description="Upload a catalog, pick one target language, inspect extracted strings, then ship a BullMQ job — progress persists on the Jobs board."
+        description="Upload a catalog, pick one target language, inspect extracted strings, then start a translation job — progress persists on the Jobs board."
       />
       <TranslateWizardShell />
     </div>
