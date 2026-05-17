@@ -17,4 +17,14 @@ describe('json.format', () => {
     const parsed = JSON.parse(out) as { msg: string };
     expect(parsed.msg).toBe('Salut');
   });
+
+  it('never treats object keys as strings to translate', () => {
+    const buf = Buffer.from(
+      JSON.stringify({ static_key: 'Value to translate' }),
+      'utf-8',
+    );
+    const { originals } = extractJson(buf);
+    expect(originals).toEqual(['Value to translate']);
+    expect(originals).not.toContain('static_key');
+  });
 });

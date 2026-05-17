@@ -63,6 +63,7 @@ function truncateJobId(uuid: string) {
 function statusLabel(status: string) {
   if (status === "completed") return "Completed";
   if (status === "failed") return "Failed";
+  if (status === "cancelled") return "Cancelled";
   return phaseLabel(status);
 }
 
@@ -70,6 +71,8 @@ function statusPillStyle(status: string) {
   if (status === "completed")
     return { bg: "rgba(62,207,142,0.1)", fg: JL.success };
   if (status === "failed") return { bg: "rgba(248,113,113,0.1)", fg: JL.danger };
+  if (status === "cancelled")
+    return { bg: "rgba(107,107,107,0.12)", fg: JL.muted };
   return { bg: "rgba(212,168,71,0.06)", fg: JL.accent };
 }
 

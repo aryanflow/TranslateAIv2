@@ -1,17 +1,36 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   createJobBodySchema,
   type CreateJobBody,
 } from '@aptos-translate/contracts';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { JobEventsService } from '../common/job-events/job-events.service';
 import { TranslateQueueService } from './translate-queue.service';
 
 @Injectable()
 export class JobsService {
+  private readonly logger = new Logger(JobsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly translateQueue: TranslateQueueService,
+    private readonly jobEvents: JobEventsService,
   ) {}
+
+  /** DB missing `ALTER TYPE "JobStatus" ADD VALUE 'cancelled'` while Prisma client expects it. */
+  private isLikelyMissingCancelledEnum(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return (
+      /invalid input value for enum/i.test(msg) &&
+      (/JobStatus/i.test(msg) || /"cancelled"/i.test(msg))
+    );
+  }
 
   private judgeThresholdFields(job: { minTranslationScore: number | null }) {
     const threshold01 = job.minTranslationScore ?? 0.7;
@@ -34,11 +53,77 @@ export class JobsService {
         batchSize: parsed.batchSize,
         minTranslationScore: parsed.minTranslationScore,
         maxBatchRetries: parsed.maxBatchRetries,
+        extractOptions: parsed.extractOptions ?? undefined,
         status: 'pending',
       },
     });
     await this.translateQueue.enqueue(job.id);
     return { jobId: job.id, status: job.status };
+  }
+
+  async cancelJob(tenantId: string, jobId: string) {
+    const job = await this.prisma.job.findFirst({
+      where: { id: jobId, tenantId },
+    });
+    if (!job) {
+      throw new NotFoundException();
+    }
+    if (
+      job.status === 'completed' ||
+      job.status === 'failed' ||
+      job.status === 'cancelled'
+    ) {
+      return { ok: true as const, status: job.status, alreadyTerminal: true };
+    }
+
+    try {
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'cancelled',
+          errorMessage: 'Cancelled by user',
+        },
+      });
+    } catch (e) {
+      if (this.isLikelyMissingCancelledEnum(e)) {
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.FAILED_DEPENDENCY,
+            message:
+              "Cannot cancel: the database JobStatus enum does not include 'cancelled'. From apps/api run: pnpm exec prisma migrate deploy (or prisma db push in dev), then retry.",
+            error: 'Failed Dependency',
+          },
+          HttpStatus.FAILED_DEPENDENCY,
+        );
+      }
+      throw e;
+    }
+
+    let removedFromQueue = false;
+    try {
+      removedFromQueue = await this.translateQueue.removeWaitingJob(jobId);
+    } catch (e) {
+      this.logger.warn(
+        `removeWaitingJob failed for ${jobId}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    try {
+      await this.jobEvents.publish(jobId, {
+        phase: 'cancelled',
+        percent: Math.round(job.progress),
+      });
+    } catch (e) {
+      this.logger.warn(
+        `jobEvents.publish(cancelled) failed for ${jobId}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      ok: true as const,
+      status: 'cancelled' as const,
+      removedFromQueue,
+    };
   }
 
   async getJob(tenantId: string, jobId: string) {

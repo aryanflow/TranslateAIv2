@@ -10,6 +10,8 @@
     "typecheck": "turbo run typecheck",
     "db:generate": "pnpm --filter api run prisma:generate",
     "db:push": "pnpm --filter api exec prisma db push",
+    "db:migrate:deploy": "pnpm --filter api exec prisma migrate deploy",
+    "db:bootstrap": "bash scripts/db-bootstrap-local.sh",
     "db:seed": "pnpm --filter api run db:seed",
     "compose:deps": "docker compose up -d postgres redis",
     "compose:full-deps": "docker compose --profile full up -d postgres redis minio"

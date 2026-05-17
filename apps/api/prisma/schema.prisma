@@ -45,6 +45,7 @@ enum JobStatus {
   regenerating
   completed
   failed
+  cancelled
 }
 
 /// Parent translation job. Chunks (BullMQ) are modeled as `JobBatch`.
@@ -63,6 +64,8 @@ model Job {
   batchTotal           Int? // planned batches × targets for UI
   errorMessage         String?
   resultUrls           String[]  @default([])
+  /** CSV column pick, future per-format flags (stored JSON). */
+  extractOptions       Json?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

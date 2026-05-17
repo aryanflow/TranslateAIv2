@@ -21,6 +21,8 @@ import {
   Max,
   MaxLength,
   ArrayMinSize,
+  ArrayMaxSize,
+  ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Observable } from 'rxjs';
@@ -28,6 +30,18 @@ import { JobsService } from './jobs.service';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { TenantId } from '../common/decorators/tenant-id.decorator';
 import { JobEventsService } from '../common/job-events/job-events.service';
+
+class JobExtractOptionsDto {
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'CSV: which columns contain user-facing copy to translate',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(64)
+  @IsString({ each: true })
+  selectedColumns?: string[];
+}
 
 class CreateJobDto {
   @ApiProperty()
@@ -71,6 +85,12 @@ class CreateJobDto {
   @Min(0)
   @Max(20)
   maxBatchRetries?: number;
+
+  @ApiPropertyOptional({ type: JobExtractOptionsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => JobExtractOptionsDto)
+  extractOptions?: JobExtractOptionsDto;
 }
 
 @ApiTags('jobs')
@@ -102,6 +122,7 @@ export class JobsController {
       batchSize: body.batchSize,
       minTranslationScore: body.minTranslationScore,
       maxBatchRetries: body.maxBatchRetries,
+      extractOptions: body.extractOptions,
     });
   }
 
@@ -116,6 +137,12 @@ export class JobsController {
         void sub.quit();
       };
     });
+  }
+
+  @Post(':id/cancel')
+  @ApiOperation({ summary: 'Cancel a queued or in-flight translation job' })
+  postCancel(@Param('id') id: string, @TenantId() tenantId: string) {
+    return this.jobs.cancelJob(tenantId, id);
   }
 
   @Get(':id/batches/:batchId')

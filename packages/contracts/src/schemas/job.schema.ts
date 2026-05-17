@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const JobStatusEnum = z.enum([
   'pending',
   'extracting',
+  'chunking',
   'translating',
   'scoring',
   'regenerating',

@@ -61,7 +61,10 @@ services:
     ports:
       - "3000:3000"
     environment:
+      # Browser (host): published API port on the machine.
       NEXT_PUBLIC_API_URL: http://localhost:3001
+      # Next `/api/upstream/*` runs in this container — use the compose service name, not localhost/127.0.0.1.
+      API_PROXY_TARGET: http://api:3001
     depends_on:
       - api
     profiles: ["full"]

@@ -10,9 +10,17 @@ export const jobStatusSchema = z.enum([
   "regenerating",
   "completed",
   "failed",
+  "cancelled",
 ]);
 
 export type JobStatus = z.infer<typeof jobStatusSchema>;
+
+export const jobExtractOptionsSchema = z
+  .object({
+    /** CSV / Excel-style sources: which header columns contain copy to translate. */
+    selectedColumns: z.array(z.string().min(1)).max(64).optional(),
+  })
+  .strict();
 
 export const createJobBodySchema = z.object({
   fileKey: z.string().min(1),
@@ -21,9 +29,11 @@ export const createJobBodySchema = z.object({
   batchSize: z.coerce.number().int().min(1).max(2000).optional().default(200),
   minTranslationScore: z.coerce.number().min(0).max(1).optional(),
   maxBatchRetries: z.coerce.number().int().min(0).max(20).optional(),
+  extractOptions: jobExtractOptionsSchema.optional(),
 });
 
 export type CreateJobBody = z.infer<typeof createJobBodySchema>;
+export type JobExtractOptions = z.infer<typeof jobExtractOptionsSchema>;
 
 export const presignedUrlRequestSchema = z.object({
   fileName: z.string().min(1),

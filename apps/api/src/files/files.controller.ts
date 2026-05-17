@@ -7,20 +7,26 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import {
+  IsArray,
   IsInt,
   IsOptional,
   IsString,
   Max,
   Min,
   MinLength,
+  ArrayMaxSize,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { presignedUrlRequestSchema } from '@aptos-translate/contracts';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { TenantId } from '../common/decorators/tenant-id.decorator';
 import { FilesService } from './files.service';
 import { ExtractorsService } from '../extractors/extractors.service';
+import { inferFormatFromKey } from '../extractors/extraction.types';
+import {
+  listCsvColumnNames,
+  suggestCsvStringColumns,
+} from '../extractors/csv.format';
 
 class PresignedUrlRequestDto {
   @ApiProperty()
@@ -50,6 +56,17 @@ class PreviewExtractDto {
   @Min(1)
   @Max(500)
   limit?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'CSV: restrict extraction to these header names (must match file). Omit for auto-detect.',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(64)
+  @IsString({ each: true })
+  selectedColumns?: string[];
 }
 
 class PresignedGetDto {
@@ -78,11 +95,10 @@ export class FilesController {
     @Body() body: PresignedUrlRequestDto,
     @TenantId() tenantId: string,
   ): Promise<{ uploadUrl: string; fileKey: string }> {
-    const parsed = presignedUrlRequestSchema.parse(body);
     return this.files.createPresignedPutUrl(
       tenantId,
-      parsed.fileName,
-      parsed.contentType,
+      body.fileName,
+      body.contentType,
     );
   }
 
@@ -100,12 +116,27 @@ export class FilesController {
     preview: string[];
     previewStringIds: number[];
     previewTruncated: boolean;
+    csvHeaders?: string[];
+    csvSuggestedColumns?: string[];
   }> {
     if (!this.files.tenantOwnsObjectKey(tenantId, body.fileKey)) {
       throw new ForbiddenException('Key does not belong to this tenant');
     }
     const buf = await this.files.getObjectBytes(body.fileKey);
-    const extracted = this.extractors.extract(buf, body.fileKey, {});
+    const format = inferFormatFromKey(body.fileKey);
+    let csvHeaders: string[] | undefined;
+    let csvSuggestedColumns: string[] | undefined;
+    if (format === 'csv') {
+      csvHeaders = listCsvColumnNames(buf);
+      csvSuggestedColumns = suggestCsvStringColumns(buf);
+    }
+    const selected =
+      body.selectedColumns?.length && format === 'csv' && csvHeaders?.length
+        ? body.selectedColumns.filter((c) => csvHeaders.includes(c))
+        : body.selectedColumns;
+    const extracted = this.extractors.extract(buf, body.fileKey, {
+      selectedColumns: selected,
+    });
     const limit = Math.min(body.limit ?? 200, 500);
     const preview = extracted.originals.slice(0, limit);
     const previewStringIds = extracted.stringIds.slice(0, limit);
@@ -115,6 +146,9 @@ export class FilesController {
       preview,
       previewStringIds,
       previewTruncated: extracted.originals.length > preview.length,
+      ...(format === 'csv'
+        ? { csvHeaders, csvSuggestedColumns }
+        : {}),
     };
   }
 

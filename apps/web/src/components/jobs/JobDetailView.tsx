@@ -17,9 +17,12 @@ import {
   apiHeaders,
   formatApiError,
   jobEventsUrl,
+  readUpstreamErrorBody,
+  tenantOnlyHeaders,
 } from "@/lib/dev-api";
 import { langLabel } from "@/lib/lang-options";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 const JD = {
   bg: "#0A0A0A",
@@ -143,6 +146,8 @@ function sseToFriendlyLine(payload: Record<string, unknown>): { message: string;
         tone: "danger",
       };
     }
+    case "cancelled":
+      return { message: "Cancelled", tone: "warn" };
     default:
       return { message: phaseLabelNeutral(phase), tone: "info" };
   }
@@ -202,6 +207,7 @@ export function JobDetailView({ jobId }: { jobId: string }) {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewSearch, setReviewSearch] = useState("");
   const [idCopied, setIdCopied] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
 
   const logRef = useRef<LogRow[]>([]);
 
@@ -219,7 +225,8 @@ export function JobDetailView({ jobId }: { jobId: string }) {
     null;
 
   const active = Boolean(job && ACTIVE.has(job.status));
-  const terminal = job?.status === "completed" || job?.status === "failed";
+  const terminal =
+    job?.status === "completed" || job?.status === "failed" || job?.status === "cancelled";
 
   const requestDownloadUrl = async (key: string) => {
     const res = await fetch(`${API_PREFIX}/files/download-url`, {
@@ -227,7 +234,7 @@ export function JobDetailView({ jobId }: { jobId: string }) {
       headers: apiHeaders(),
       body: JSON.stringify({ key }),
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) throw new Error(await readUpstreamErrorBody(res));
     return (await res.json()) as { url: string };
   };
 
@@ -254,11 +261,32 @@ export function JobDetailView({ jobId }: { jobId: string }) {
       setLoadError("Job not found");
       return;
     }
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) throw new Error(await readUpstreamErrorBody(res));
     const data = (await res.json()) as JobDetailApi;
     setJob(data);
     setLoadError(null);
   }, [tenantOk, jobId]);
+
+  const cancelJob = useCallback(async () => {
+    if (!tenantOk) return;
+    setCancelBusy(true);
+    setLoadError(null);
+    try {
+      const res = await fetch(`${API_PREFIX}/jobs/${jobId}/cancel`, {
+        method: "POST",
+        headers: tenantOnlyHeaders(),
+      });
+      if (!res.ok) {
+        const detail = await readUpstreamErrorBody(res);
+        throw new Error(`Cancel failed (${res.status}): ${detail}`);
+      }
+      await fetchJob();
+    } catch (e) {
+      setLoadError(formatApiError(e));
+    } finally {
+      setCancelBusy(false);
+    }
+  }, [tenantOk, jobId, fetchJob]);
 
   useEffect(() => {
     void (async () => {
@@ -305,6 +333,14 @@ export function JobDetailView({ jobId }: { jobId: string }) {
         atMs: Date.parse(job.updatedAt),
         message: job.errorMessage?.slice(0, 160) ?? "Failed",
         tone: "danger",
+      });
+    }
+    if (job.status === "cancelled") {
+      rows.push({
+        id: "cancelled",
+        atMs: Date.parse(job.updatedAt),
+        message: job.errorMessage?.slice(0, 160) ?? "Cancelled",
+        tone: "warn",
       });
     }
     setLog(rows);
@@ -387,7 +423,7 @@ export function JobDetailView({ jobId }: { jobId: string }) {
       try {
         const { url } = await requestDownloadUrl(qaBundleStorageKey);
         const res = await fetch(url);
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) throw new Error(await readUpstreamErrorBody(res));
         const data: unknown = await res.json();
         const parsed = parseQaBundle(data);
         if (cancelled || !parsed) return;
@@ -471,7 +507,9 @@ export function JobDetailView({ jobId }: { jobId: string }) {
       ? { bg: "rgba(62,207,142,0.1)", fg: JD.success }
       : job?.status === "failed"
         ? { bg: "rgba(248,113,113,0.1)", fg: JD.danger }
-        : { bg: "rgba(212,168,71,0.06)", fg: JD.accent };
+        : job?.status === "cancelled"
+          ? { bg: "rgba(107,107,107,0.12)", fg: JD.muted }
+          : { bg: "rgba(212,168,71,0.06)", fg: JD.accent };
 
   const headlineFrom = langLabel(job?.sourceLang ?? "american_english");
   const headlineTo =
@@ -530,8 +568,23 @@ export function JobDetailView({ jobId }: { jobId: string }) {
                   ? "Completed"
                   : job.status === "failed"
                     ? "Failed"
-                    : job.status}
+                    : job.status === "cancelled"
+                      ? "Cancelled"
+                      : job.status}
               </span>
+              <div className="ms-auto flex flex-wrap items-center gap-2">
+                {active ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={cancelBusy}
+                    onClick={() => void cancelJob()}
+                  >
+                    {cancelBusy ? "Cancelling…" : "Cancel job"}
+                  </Button>
+                ) : null}
+              </div>
             </div>
 
             <div className="mt-10 text-[22px] font-light leading-snug tracking-wide">

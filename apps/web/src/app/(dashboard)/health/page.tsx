@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/shell/PageHeader";
 import { BuildInfo } from "@/components/health/BuildInfo";
 import { DepsPanel } from "@/components/health/DepsPanel";
+import { HealthRefreshBar } from "@/components/health/HealthRefreshBar";
 
 export default function HealthPage() {
   return (
@@ -9,6 +10,7 @@ export default function HealthPage() {
         eyebrow="Reliability"
         title="Health & dependencies"
         description="Postgres, Redis, S3, translator, and judge — plus build metadata from the API. First-class ops surface, not a hidden debug page."
+        actions={<HealthRefreshBar />}
       />
       <div className="animate-in-delay-1 mt-10 grid gap-10 lg:grid-cols-2">
         <section>

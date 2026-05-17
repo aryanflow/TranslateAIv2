@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { JobEventsService } from '../common/job-events/job-events.service';
 import { FilesService } from '../files/files.service';
@@ -116,6 +117,26 @@ export class TranslationOrchestratorService {
     private readonly prompts: PromptsService,
   ) {}
 
+  private async isJobCancelled(jobId: string): Promise<boolean> {
+    const row = await this.prisma.job.findUnique({
+      where: { id: jobId },
+      select: { status: true },
+    });
+    return row?.status === 'cancelled';
+  }
+
+  /** Status/progress updates must not clobber a user-cancelled job. */
+  private async updateJobUnlessCancelled(
+    jobId: string,
+    data: Prisma.JobUpdateManyMutationInput,
+  ): Promise<boolean> {
+    const r = await this.prisma.job.updateMany({
+      where: { id: jobId, status: { not: 'cancelled' } },
+      data,
+    });
+    return r.count > 0;
+  }
+
   async run(jobId: string): Promise<void> {
     const job = await this.prisma.job.findUnique({
       where: { id: jobId },
@@ -123,6 +144,10 @@ export class TranslationOrchestratorService {
     });
     if (!job) {
       this.logger.warn(`Job ${jobId} not found`);
+      return;
+    }
+    if (job.status === 'cancelled') {
+      this.logger.warn(`Job ${jobId} already cancelled — skipping`);
       return;
     }
 
@@ -144,25 +169,50 @@ export class TranslationOrchestratorService {
       DEFAULT_BEDROCK_SCORING_MODEL_ID;
 
     try {
-      await this.prisma.job.update({
-        where: { id: jobId },
-        data: { status: 'extracting', progress: 2, errorMessage: null },
+      const progressed = await this.updateJobUnlessCancelled(jobId, {
+        status: 'extracting',
+        progress: 2,
+        errorMessage: null,
       });
+      if (!progressed && (await this.isJobCancelled(jobId))) {
+        await this.events.publish(jobId, { phase: 'cancelled', percent: 0 });
+        return;
+      }
+      if (!progressed) {
+        return;
+      }
       await this.events.publish(jobId, { phase: 'extracting', percent: 2 });
 
       const buf = await this.files.getObjectBytes(job.fileKey);
-      const extracted = this.extractors.extract(buf, job.fileKey, {});
+      if (await this.isJobCancelled(jobId)) {
+        await this.events.publish(jobId, { phase: 'cancelled', percent: 2 });
+        return;
+      }
+      const extractOpts =
+        job.extractOptions &&
+        typeof job.extractOptions === 'object' &&
+        !Array.isArray(job.extractOptions)
+          ? (job.extractOptions as {
+              selectedColumns?: string[];
+              selectedSheet?: string;
+            })
+          : {};
+      const extracted = this.extractors.extract(buf, job.fileKey, extractOpts);
       const batches = chunk(extracted.originals, batchSize);
 
-      await this.prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'chunking',
-          progress: 5,
-          stringsTotal: extracted.originals.length,
-          batchTotal: batches.length * job.targetLangs.length,
-        },
+      const chunked = await this.updateJobUnlessCancelled(jobId, {
+        status: 'chunking',
+        progress: 5,
+        stringsTotal: extracted.originals.length,
+        batchTotal: batches.length * job.targetLangs.length,
       });
+      if (!chunked && (await this.isJobCancelled(jobId))) {
+        await this.events.publish(jobId, { phase: 'cancelled', percent: 5 });
+        return;
+      }
+      if (!chunked) {
+        return;
+      }
       await this.events.publish(jobId, {
         phase: 'chunking',
         stringsTotal: extracted.originals.length,
@@ -172,6 +222,17 @@ export class TranslationOrchestratorService {
       let globalBatchIndex = 0;
 
       for (const targetLang of job.targetLangs) {
+        if (await this.isJobCancelled(jobId)) {
+          const p = await this.prisma.job.findUnique({
+            where: { id: jobId },
+            select: { progress: true },
+          });
+          await this.events.publish(jobId, {
+            phase: 'cancelled',
+            percent: Math.round(p?.progress ?? 0),
+          });
+          return;
+        }
         type QaRow = {
           string_id: number;
           source_path: string;
@@ -228,6 +289,17 @@ export class TranslationOrchestratorService {
         let offset = 0;
 
         for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+          if (await this.isJobCancelled(jobId)) {
+            const p = await this.prisma.job.findUnique({
+              where: { id: jobId },
+              select: { progress: true },
+            });
+            await this.events.publish(jobId, {
+              phase: 'cancelled',
+              percent: Math.round(p?.progress ?? 0),
+            });
+            return;
+          }
           const batch = batches[batchIndex];
           const tags = extracted.tags.slice(offset, offset + batch.length);
           let attempt = 0;
@@ -238,13 +310,20 @@ export class TranslationOrchestratorService {
             const pct =
               5 + (85 * offset) / Math.max(1, extracted.originals.length);
 
-            await this.prisma.job.update({
-              where: { id: jobId },
-              data: {
-                status: attempt === 1 ? 'translating' : 'scoring',
-                progress: Math.min(95, pct),
-              },
+            const progressed = await this.updateJobUnlessCancelled(jobId, {
+              status: attempt === 1 ? 'translating' : 'scoring',
+              progress: Math.min(95, pct),
             });
+            if (!progressed && (await this.isJobCancelled(jobId))) {
+              await this.events.publish(jobId, {
+                phase: 'cancelled',
+                percent: Math.round(pct),
+              });
+              return;
+            }
+            if (!progressed) {
+              return;
+            }
             await this.events.publish(jobId, {
               phase: 'translating',
               stringsDone: offset,
@@ -271,12 +350,16 @@ export class TranslationOrchestratorService {
               },
             );
 
+            const scoreTags =
+              extracted.format === 'json'
+                ? undefined
+                : tags;
             const scored = await this.scoring.score(
               scorerKind,
               batch,
               trans,
               targetLang,
-              tags,
+              scoreTags,
               {
                 stringIds: extracted.stringIds.slice(
                   offset,
@@ -336,15 +419,34 @@ export class TranslationOrchestratorService {
           }
         }
 
+        if (await this.isJobCancelled(jobId)) {
+          const p = await this.prisma.job.findUnique({
+            where: { id: jobId },
+            select: { progress: true },
+          });
+          await this.events.publish(jobId, {
+            phase: 'cancelled',
+            percent: Math.round(p?.progress ?? 0),
+          });
+          return;
+        }
+
         const tagTranslationMap: Record<string, string> = {};
         for (let i = 0; i < extracted.originals.length; i++) {
           tagTranslationMap[extracted.tags[i]] = ordered[i];
         }
 
-        await this.prisma.job.update({
-          where: { id: jobId },
-          data: { status: 'regenerating', progress: 92 },
+        const regen = await this.updateJobUnlessCancelled(jobId, {
+          status: 'regenerating',
+          progress: 92,
         });
+        if (!regen && (await this.isJobCancelled(jobId))) {
+          await this.events.publish(jobId, { phase: 'cancelled', percent: 92 });
+          return;
+        }
+        if (!regen) {
+          return;
+        }
         await this.events.publish(jobId, {
           phase: 'regenerating',
           targetLang,
@@ -400,30 +502,53 @@ export class TranslationOrchestratorService {
         resultUrls.push(qaCsvKey);
       }
 
-      await this.prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'completed',
-          progress: 100,
-          resultUrls,
-        },
+      const finished = await this.updateJobUnlessCancelled(jobId, {
+        status: 'completed',
+        progress: 100,
+        resultUrls,
       });
+      if (!finished) {
+        if (await this.isJobCancelled(jobId)) {
+          const p = await this.prisma.job.findUnique({
+            where: { id: jobId },
+            select: { progress: true },
+          });
+          await this.events.publish(jobId, {
+            phase: 'cancelled',
+            percent: Math.round(p?.progress ?? 0),
+          });
+        }
+        return;
+      }
       await this.events.publish(jobId, {
         phase: 'completed',
         percent: 100,
         resultUrls,
       });
     } catch (e) {
+      const fresh = await this.prisma.job.findUnique({
+        where: { id: jobId },
+        select: { status: true, progress: true },
+      });
+      if (fresh?.status === 'cancelled') {
+        await this.events.publish(jobId, {
+          phase: 'cancelled',
+          percent: Math.round(fresh.progress),
+        });
+        return;
+      }
       const msg = e instanceof Error ? e.message : String(e);
       this.logger.error(`Job ${jobId} failed: ${msg}`);
-      await this.prisma.job.update({
-        where: { id: jobId },
+      const wr = await this.prisma.job.updateMany({
+        where: { id: jobId, status: { not: 'cancelled' } },
         data: {
           status: 'failed',
           errorMessage: msg,
         },
       });
-      await this.events.publish(jobId, { phase: 'failed', error: msg });
+      if (wr.count > 0) {
+        await this.events.publish(jobId, { phase: 'failed', error: msg });
+      }
     }
   }
 }

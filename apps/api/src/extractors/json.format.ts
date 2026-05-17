@@ -1,4 +1,4 @@
-/** aptos-translateai/extractor/json_extractor.py */
+/** aptos-translateai/extractor/json_extractor.py — string leaf values only; object keys are never sent for translation. */
 export function extractJson(fileBytes: Buffer): {
   originals: string[];
   tags: string[];

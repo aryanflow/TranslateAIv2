@@ -25,6 +25,43 @@ function detectStringColumns(
   return stringCols;
 }
 
+/** Header names from the first parsed row (for UI column pickers). */
+export function listCsvColumnNames(fileBytes: Buffer): string[] {
+  const content = fileBytes.toString('utf-8');
+  let rows: Record<string, string>[];
+  try {
+    rows = parse(content, {
+      columns: true,
+      skip_empty_lines: true,
+      relax_quotes: true,
+      trim: true,
+    });
+  } catch {
+    return [];
+  }
+  if (!rows.length) return [];
+  return Object.keys(rows[0]);
+}
+
+/** Columns whose values are not all numeric — typical “copy to translate” candidates. */
+export function suggestCsvStringColumns(fileBytes: Buffer): string[] {
+  const content = fileBytes.toString('utf-8');
+  let rows: Record<string, string>[];
+  try {
+    rows = parse(content, {
+      columns: true,
+      skip_empty_lines: true,
+      relax_quotes: true,
+      trim: true,
+    });
+  } catch {
+    return [];
+  }
+  if (!rows.length) return [];
+  const columns = Object.keys(rows[0]);
+  return detectStringColumns(rows, columns);
+}
+
 export function extractCsv(
   fileBytes: Buffer,
   selectedColumns?: string[],

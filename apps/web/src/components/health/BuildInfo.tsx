@@ -1,23 +1,16 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import {
+  fetchUpstreamVersion,
+  upstreamVersionQueryKey,
+  type UpstreamVersionPayload,
+} from "@/lib/health-queries";
 
 export function BuildInfo() {
-  const q = useQuery({
-    queryKey: ["version", "upstream"],
-    queryFn: async () => {
-      const res = await fetch("/api/upstream/version");
-      if (!res.ok) {
-        throw new Error("version fetch failed");
-      }
-      return res.json() as Promise<{
-        service: string;
-        version: string;
-        gitSha: string | null;
-        buildTime: string | null;
-        node: string;
-      }>;
-    },
+  const q = useQuery<UpstreamVersionPayload>({
+    queryKey: upstreamVersionQueryKey,
+    queryFn: fetchUpstreamVersion,
   });
 
   if (q.isLoading) {

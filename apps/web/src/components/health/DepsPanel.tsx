@@ -2,27 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-
-type LlmProbe = {
-  id: string;
-  provider: string;
-  modelId: string;
-  status: string;
-  latencyMs?: number;
-  /** Reserved for future metrics (not populated by API yet). */
-  p95Ms?: number | null;
-  lastError: string | null;
-};
-
-type Deps = {
-  postgres: { status: string; latencyMs?: number };
-  redis: { status: string; note?: string };
-  s3: { status: string; note?: string };
-  llm: {
-    translator: LlmProbe;
-    judge: LlmProbe;
-  };
-};
+import {
+  fetchUpstreamHealthDeps,
+  healthDepsQueryKey,
+  type HealthDepsPayload,
+  type LlmProbe,
+} from "@/lib/health-queries";
 
 function StatusChip({ status }: { status: string }) {
   const up = status === "up";
@@ -93,15 +78,9 @@ function normalizeLlmProbe(raw: Partial<LlmProbe> & Pick<LlmProbe, "id" | "statu
 }
 
 export function DepsPanel() {
-  const q = useQuery({
-    queryKey: ["health-deps", "upstream"],
-    queryFn: async () => {
-      const res = await fetch("/api/upstream/health/deps");
-      if (!res.ok) {
-        throw new Error("deps failed");
-      }
-      return res.json() as Promise<Deps>;
-    },
+  const q = useQuery<HealthDepsPayload>({
+    queryKey: healthDepsQueryKey,
+    queryFn: fetchUpstreamHealthDeps,
   });
 
   if (q.isLoading) {

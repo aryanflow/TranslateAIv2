@@ -89,6 +89,19 @@ export class TranslateQueueService implements OnModuleDestroy {
     );
   }
 
+  /** Remove a job still waiting in Redis (not yet active). Returns whether it was removed. */
+  async removeWaitingJob(jobId: string): Promise<boolean> {
+    const queue = this.getQueue();
+    const bullJob = await queue.getJob(jobId);
+    if (!bullJob) return false;
+    const state = await bullJob.getState();
+    if (state === 'waiting' || state === 'delayed') {
+      await bullJob.remove();
+      return true;
+    }
+    return false;
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.queue?.close();
     await this.redis?.quit();

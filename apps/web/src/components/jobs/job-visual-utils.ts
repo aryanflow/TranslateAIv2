@@ -8,6 +8,7 @@ export function phaseLabel(status: string): string {
     regenerating: "Building download",
     completed: "Done",
     failed: "Failed",
+    cancelled: "Cancelled",
   };
   return map[status] ?? status;
 }
@@ -18,7 +19,8 @@ export function estimateEtaSeconds(job: {
   createdAt: string;
   status: string;
 }): number | null {
-  if (job.status === "completed" || job.status === "failed") return null;
+  if (job.status === "completed" || job.status === "failed" || job.status === "cancelled")
+    return null;
   const p = job.progress;
   if (p <= 3) return null;
   const start = new Date(job.createdAt).getTime();

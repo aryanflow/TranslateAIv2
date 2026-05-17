@@ -13,6 +13,7 @@ import {
   TENANT_ID,
   apiHeaders,
   formatApiError,
+  readUpstreamErrorBody,
 } from "@/lib/dev-api";
 import { phaseLabel } from "@/components/jobs/job-visual-utils";
 import type { ReactNode } from "react";
@@ -92,7 +93,9 @@ function WizardRail({
             <p className="truncate text-[12px] text-[var(--muted)]">
               {ingestPhase === "uploading" || ingestPhase === "previewing"
                 ? "Upload & extract"
-                : ingestPhase === "ready"
+                : ingestPhase === "csv_columns"
+                  ? "Choose CSV column"
+                  : ingestPhase === "ready"
                   ? "Strings ready"
                   : ingestPhase === "error"
                     ? "Fix upload & retry"
@@ -139,7 +142,7 @@ function WizardRail({
   );
 }
 
-type IngestPhase = "idle" | "uploading" | "previewing" | "ready" | "error";
+type IngestPhase = "idle" | "uploading" | "previewing" | "csv_columns" | "ready" | "error";
 
 type PreviewPayload = {
   format: string;
@@ -147,6 +150,8 @@ type PreviewPayload = {
   preview: string[];
   previewStringIds?: number[];
   previewTruncated: boolean;
+  csvHeaders?: string[];
+  csvSuggestedColumns?: string[];
 };
 
 type JobPollState = {
@@ -313,6 +318,9 @@ export function TranslateWizardShell() {
   const [fixturePeekError, setFixturePeekError] = useState<string | null>(null);
   /** Off by default — no chunky “collapsed” disclosure in the main wizard chrome. */
   const [fixtureDemosOpen, setFixtureDemosOpen] = useState(false);
+  /** CSV: confirmed header names passed to preview + create job */
+  const [csvSelectedColumns, setCsvSelectedColumns] = useState<string[]>([]);
+  const [csvColumnBusy, setCsvColumnBusy] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const jobLivePanelRef = useRef<HTMLDivElement>(null);
@@ -431,15 +439,25 @@ export function TranslateWizardShell() {
     if (alt) setTargetLang(alt.value);
   }, [sourceLang, targetLang]);
 
-  const fetchPreviewForKey = useCallback(async (key: string) => {
-    const res = await fetch(`${API_PREFIX}/files/preview`, {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify({ fileKey: key, limit: 280 }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return (await res.json()) as PreviewPayload;
-  }, []);
+  const fetchPreviewForKey = useCallback(
+    async (key: string, opts?: { selectedColumns?: string[]; limit?: number }) => {
+      const body: Record<string, unknown> = {
+        fileKey: key,
+        limit: opts?.limit ?? 280,
+      };
+      if (opts?.selectedColumns?.length) {
+        body.selectedColumns = opts.selectedColumns;
+      }
+      const res = await fetch(`${API_PREFIX}/files/preview`, {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return (await res.json()) as PreviewPayload;
+    },
+    [],
+  );
 
   const ingestFile = async (file: File | null, fromFixture?: FixtureTile | null) => {
     setError(null);
@@ -450,6 +468,8 @@ export function TranslateWizardShell() {
     setIngestPhase("idle");
     setActiveJobId(null);
     setJobLive(null);
+    setCsvSelectedColumns([]);
+    setCsvColumnBusy(false);
 
     if (!file || !tenantOk) return;
 
@@ -463,7 +483,10 @@ export function TranslateWizardShell() {
           contentType: file.type || "application/octet-stream",
         }),
       });
-      if (!pre.ok) throw new Error(`Presign failed: ${await pre.text()}`);
+      if (!pre.ok) {
+        const detail = await readUpstreamErrorBody(pre);
+        throw new Error(`Presign failed (${pre.status}): ${detail}`);
+      }
       const { uploadUrl, fileKey: key } = (await pre.json()) as {
         uploadUrl: string;
         fileKey: string;
@@ -482,7 +505,19 @@ export function TranslateWizardShell() {
       setIngestPhase("previewing");
       const pv = await fetchPreviewForKey(key);
       setPreviewPayload(pv);
-      setIngestPhase("ready");
+      if (
+        pv.format === "csv" &&
+        pv.csvHeaders?.length
+      ) {
+        const defaults =
+          pv.csvSuggestedColumns?.length && pv.csvSuggestedColumns.length > 0
+            ? pv.csvSuggestedColumns
+            : pv.csvHeaders;
+        setCsvSelectedColumns(defaults);
+        setIngestPhase("csv_columns");
+      } else {
+        setIngestPhase("ready");
+      }
       if (fromFixture) {
         setImportProvenance({
           kind: "fixture",
@@ -547,6 +582,27 @@ export function TranslateWizardShell() {
     };
   }, [activeJobId, tenantOk]);
 
+  const confirmCsvColumns = useCallback(async () => {
+    if (!fileKey || !tenantOk) return;
+    if (!csvSelectedColumns.length) {
+      setError("Select at least one CSV column to translate.");
+      return;
+    }
+    setCsvColumnBusy(true);
+    setError(null);
+    try {
+      const pv = await fetchPreviewForKey(fileKey, {
+        selectedColumns: csvSelectedColumns,
+      });
+      setPreviewPayload(pv);
+      setIngestPhase("ready");
+    } catch (e) {
+      setError(formatApiError(e));
+    } finally {
+      setCsvColumnBusy(false);
+    }
+  }, [fileKey, tenantOk, csvSelectedColumns, fetchPreviewForKey]);
+
   const startTranslation = async () => {
     setError(null);
     if (!tenantOk) {
@@ -557,9 +613,17 @@ export function TranslateWizardShell() {
       setError("Finish uploading and extracting strings before starting.");
       return;
     }
+    if (previewPayload?.format === "csv" && !csvSelectedColumns.length) {
+      setError("Choose at least one CSV column before starting.");
+      return;
+    }
 
     setBusySubmit(true);
     try {
+      const extractOptions =
+        previewPayload?.format === "csv" && csvSelectedColumns.length
+          ? { selectedColumns: csvSelectedColumns }
+          : undefined;
       const jobRes = await fetch(`${API_PREFIX}/jobs`, {
         method: "POST",
         headers: apiHeaders(),
@@ -568,9 +632,13 @@ export function TranslateWizardShell() {
           sourceLang,
           targetLangs: [targetLang],
           batchSize,
+          ...(extractOptions ? { extractOptions } : {}),
         }),
       });
-      if (!jobRes.ok) throw new Error(`Create job failed: ${await jobRes.text()}`);
+      if (!jobRes.ok) {
+        const detail = await readUpstreamErrorBody(jobRes);
+        throw new Error(`Create job failed (${jobRes.status}): ${detail}`);
+      }
       const created = (await jobRes.json()) as { jobId: string };
       setActiveJobId(created.jobId);
       setJobLive({
@@ -605,11 +673,13 @@ export function TranslateWizardShell() {
           : "Uploading…"
         : ingestPhase === "previewing"
           ? "Extracting strings…"
-          : ingestPhase === "ready"
-            ? importProvenance?.kind === "fixture"
-              ? `Ready — catalogue from sample · ${importProvenance.displayName}${previewPayload ? ` (${previewPayload.totalStrings.toLocaleString()} strings)` : ""}.`
-              : `Ready — ${localFileName ?? "your catalog"}${previewPayload ? ` (${previewPayload.totalStrings.toLocaleString()} strings)` : ""}.`
-            : "Could not ingest file.";
+          : ingestPhase === "csv_columns"
+            ? "Pick which CSV column(s) contain copy to translate, then continue."
+            : ingestPhase === "ready"
+              ? importProvenance?.kind === "fixture"
+                ? `Ready — catalogue from sample · ${importProvenance.displayName}${previewPayload ? ` (${previewPayload.totalStrings.toLocaleString()} strings)` : ""}.`
+                : `Ready — ${localFileName ?? "your catalog"}${previewPayload ? ` (${previewPayload.totalStrings.toLocaleString()} strings)` : ""}.`
+              : "Could not ingest file.";
 
   return (
     <div ref={rootRef} className="mt-10 space-y-5">
@@ -632,7 +702,11 @@ export function TranslateWizardShell() {
       <StepCard step={1} title="Import catalogue">
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-[var(--muted)]">
-            Browse JSON, CSV, XML, or XLSX — presign and extractor handle every format the same way.
+            Browse JSON, CSV, XML, or XLSX — presign and extractor handle every format the same way.{" "}
+            <span className="text-[var(--fg-soft)]">
+              JSON: only string values are translated; property keys stay as stable paths in the file.
+            </span>{" "}
+            CSV: after upload you choose which column(s) hold the copy to localize.
           </p>
           {tenantOk ? (
             <button
@@ -682,7 +756,10 @@ export function TranslateWizardShell() {
             </div>
           <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden">
             {SAMPLE_FIXTURES.map((sample) => {
-              const ingestBusy = ingestPhase === "uploading" || ingestPhase === "previewing";
+              const ingestBusy =
+                ingestPhase === "uploading" ||
+                ingestPhase === "previewing" ||
+                csvColumnBusy;
               const sampleActive =
                 importProvenance?.kind === "fixture" && importProvenance.href === sample.href;
               return (
@@ -785,7 +862,11 @@ export function TranslateWizardShell() {
             type="file"
             accept=".xml,.json,.csv,.xlsx,.xls"
             className="max-w-full text-[13px] text-[var(--muted)] file:mr-3 file:rounded-md file:border file:border-[var(--edge-bright)] file:bg-[var(--panel)] file:px-3 file:py-1.5 file:text-[12px] file:font-medium file:text-[var(--fg)]"
-            disabled={ingestPhase === "uploading" || ingestPhase === "previewing"}
+            disabled={
+              ingestPhase === "uploading" ||
+              ingestPhase === "previewing" ||
+              csvColumnBusy
+            }
             onChange={(e) => void ingestFile(e.target.files?.[0] ?? null)}
           />
           {ingestLabel ? (
@@ -818,6 +899,11 @@ export function TranslateWizardShell() {
                 </span>
                 <span className="rounded-md border border-[var(--edge-bright)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[var(--muted)]">
                   {previewPayload.format}
+                  {previewPayload.format === "json" ? (
+                    <span className="ml-2 font-sans normal-case text-[var(--muted-deep)]">
+                      · values only
+                    </span>
+                  ) : null}
                 </span>
               </span>
             </summary>
@@ -834,6 +920,66 @@ export function TranslateWizardShell() {
               })}
             </div>
           </details>
+        ) : null}
+
+        {ingestPhase === "csv_columns" && previewPayload?.csvHeaders?.length ? (
+          <div
+            className="mt-4 space-y-3 rounded-lg border border-[var(--accent-muted)]/45 bg-[var(--panel)]/35 px-4 py-4"
+            role="region"
+            aria-label="CSV column selection"
+          >
+            <p className="text-[13px] font-semibold text-[var(--fg)]">
+              Which column(s) contain copy to translate?
+            </p>
+            <p className="text-[11px] leading-relaxed text-[var(--muted)]">
+              We pre-select columns that do not look purely numeric. Adjust the checkboxes, then continue — the
+              string count updates to match.
+            </p>
+            <div className="flex max-h-48 flex-wrap gap-x-5 gap-y-2 overflow-y-auto pr-1">
+              {previewPayload.csvHeaders.map((h) => {
+                const on = csvSelectedColumns.includes(h);
+                return (
+                  <label
+                    key={h}
+                    className="flex cursor-pointer items-center gap-2 text-[12px] text-[var(--fg-soft)]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() => {
+                        setCsvSelectedColumns((prev) =>
+                          prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h],
+                        );
+                      }}
+                      className="rounded border-[var(--edge-bright)]"
+                    />
+                    <span className="font-mono text-[11px] text-[var(--fg)]">{h}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCsvSelectedColumns([...previewPayload.csvHeaders!])}
+              >
+                Select all
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setCsvSelectedColumns([])}>
+                Clear
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={csvColumnBusy || !csvSelectedColumns.length}
+                onClick={() => void confirmCsvColumns()}
+              >
+                {csvColumnBusy ? "Refreshing preview…" : "Continue with selected columns"}
+              </Button>
+            </div>
+          </div>
         ) : null}
       </StepCard>
 
@@ -923,25 +1069,55 @@ export function TranslateWizardShell() {
       {activeJobId && jobLive ? (
         <div
           ref={jobLivePanelRef}
-          className="relative overflow-hidden rounded-xl border border-[var(--accent)]/35 bg-[var(--accent)]/[0.06] p-5 shadow-[0_12px_48px_-24px_rgba(212,175,92,0.55)]"
+          className={cn(
+            "relative overflow-hidden rounded-xl border p-5 shadow-[0_12px_48px_-24px_rgba(212,175,92,0.55)]",
+            jobLive.status === "cancelled"
+              ? "border-[var(--edge-bright)] bg-[var(--panel)]/40 shadow-none"
+              : "border-[var(--accent)]/35 bg-[var(--accent)]/[0.06]",
+          )}
         >
           <div className="pointer-events-none absolute -left-16 top-1/2 h-48 w-48 -translate-y-1/2 rounded-full bg-[var(--accent)]/[0.07] blur-3xl" />
           <div className="relative flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="flex gap-3">
-              <PipelinePulse />
+              {jobLive.status === "cancelled" ||
+              jobLive.status === "completed" ||
+              jobLive.status === "failed" ? null : (
+                <PipelinePulse />
+              )}
               <div>
                 <p className="font-[family-name:var(--font-serif)] text-lg font-semibold text-[var(--fg)]">
-                  Job running — safe to leave
+                  {jobLive.status === "cancelled"
+                    ? "Job cancelled"
+                    : jobLive.status === "completed"
+                      ? "Job completed"
+                      : jobLive.status === "failed"
+                        ? "Job failed"
+                        : "Job running — safe to leave"}
                 </p>
                 <p className="mt-1 max-w-prose text-[13px] leading-relaxed text-[var(--muted)]">
-                  Progress saves automatically. Reload anytime;{" "}
-                  <Link
-                    href={`/jobs/${activeJobId}`}
-                    className="font-medium text-[var(--accent-muted)] underline-offset-4 hover:underline"
-                  >
-                    open this job on the Jobs board
-                  </Link>{" "}
-                  for batch breakdowns, downloads, and previews when it completes.
+                  {jobLive.status === "cancelled" ? (
+                    <>
+                      This run was stopped.{" "}
+                      <Link
+                        href={`/jobs/${activeJobId}`}
+                        className="font-medium text-[var(--accent-muted)] underline-offset-4 hover:underline"
+                      >
+                        Open job detail
+                      </Link>{" "}
+                      for the final timeline.
+                    </>
+                  ) : (
+                    <>
+                      Progress saves automatically. Reload anytime;{" "}
+                      <Link
+                        href={`/jobs/${activeJobId}`}
+                        className="font-medium text-[var(--accent-muted)] underline-offset-4 hover:underline"
+                      >
+                        open this job on the Jobs board
+                      </Link>{" "}
+                      for batch breakdowns, downloads, and previews when it completes.
+                    </>
+                  )}
                 </p>
                 <p className="mt-3 font-mono text-[11px] text-[var(--muted-deep)]">
                   job id · {activeJobId}
@@ -1104,7 +1280,8 @@ export function TranslateWizardShell() {
                     fixturePeekLoading ||
                     Boolean(fixturePeekError) ||
                     ingestPhase === "uploading" ||
-                    ingestPhase === "previewing"
+                    ingestPhase === "previewing" ||
+                    csvColumnBusy
                   }
                   onClick={() => void ingestFromFixturePeek()}
                 >
