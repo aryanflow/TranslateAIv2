@@ -1,22 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  API_PREFIX,
-  TENANT_ID,
-  apiHeaders,
-  formatApiError,
-  jobEventsUrl,
-} from "@/lib/dev-api";
+import { API_PREFIX, TENANT_ID, apiHeaders, formatApiError } from "@/lib/dev-api";
 import { langLabel } from "@/lib/lang-options";
 import {
   estimateEtaSeconds,
   formatDurationSeconds,
-  formatJobStartedLog,
   phaseLabel,
 } from "@/components/jobs/job-visual-utils";
 
@@ -30,6 +23,8 @@ type JobRow = {
   stringsTotal: number | null;
   batchTotal: number | null;
   batchesCompleted: number;
+  fileKey?: string;
+  uploadFileLabel?: string;
   createdAt: string;
   updatedAt: string;
   errorMessage: string | null;
@@ -39,156 +34,64 @@ type JobRow = {
   minTranslationScoreStored?: number | null;
 };
 
-type PreviewState = { title: string; body: string } | null;
+type PeekState = { label: string; body: string } | null;
 
-type QaReviewRow = {
-  string_id: number;
-  source_path: string;
-  original: string;
-  translation: string;
-  reviewer_score_0_to_10: number;
-  reviewer_notes: string;
-  meets_accuracy_threshold?: boolean;
-};
+const JL = {
+  bg: "#0A0A0A",
+  border: "#1F1F1F",
+  fg: "#F5F5F5",
+  muted: "#6B6B6B",
+  accent: "#D4A847",
+  success: "#3ECF8E",
+  danger: "#F87171",
+  rowHover: "#1A1A1A",
+} as const;
 
-type QaTableState = {
-  title: string;
-  artifactName: string;
-  bundleKey: string;
-  jobId?: string;
-  rows: QaReviewRow[];
-  threshold10: number | null;
-  meanReviewerScore: number | null;
-};
+const ACTIVE = new Set([
+  "pending",
+  "extracting",
+  "chunking",
+  "translating",
+  "scoring",
+  "regenerating",
+]);
 
-function csvEscapeCell(v: string | number | boolean): string {
-  const s = String(v);
-  if (/[",\r\n]/.test(s)) {
-    return `"${s.replace(/"/g, '""')}"`;
+function truncateJobId(uuid: string) {
+  return uuid.replace(/-/g, "").slice(0, 8).toLowerCase();
+}
+
+function statusLabel(status: string) {
+  if (status === "completed") return "Completed";
+  if (status === "failed") return "Failed";
+  return phaseLabel(status);
+}
+
+function statusPillStyle(status: string) {
+  if (status === "completed")
+    return { bg: "rgba(62,207,142,0.1)", fg: JL.success };
+  if (status === "failed") return { bg: "rgba(248,113,113,0.1)", fg: JL.danger };
+  return { bg: "rgba(212,168,71,0.06)", fg: JL.accent };
+}
+
+/** Wall time when the job was created (translation run started). */
+function formatStartedAt(iso: string): { compact: string; full: string } {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { compact: "—", full: iso };
+  const full = d.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  try {
+    const compact = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(d);
+    return { compact, full };
+  } catch {
+    return { compact: full, full };
   }
-  return s;
-}
-
-/** Matches the Review table columns (UTF-8 BOM for Excel). */
-function qaRowsToCompactTableCsv(rows: readonly QaReviewRow[]): string {
-  const headers = [
-    "id",
-    "source_path",
-    "original",
-    "translated",
-    "score_0_to_10",
-    "reviewer_feedback_judge",
-  ] as const;
-  const lines = [
-    headers.join(","),
-    ...rows.map((r) =>
-      [
-        csvEscapeCell(r.string_id),
-        csvEscapeCell(r.source_path),
-        csvEscapeCell(r.original),
-        csvEscapeCell(r.translation),
-        csvEscapeCell(r.reviewer_score_0_to_10),
-        csvEscapeCell(r.reviewer_notes),
-      ].join(","),
-    ),
-  ];
-  return lines.join("\n");
-}
-
-/** Same headers as compare CSV; `original` and `translated` columns both carry catalogue-final copy (target language). */
-function qaRowsToReplacedStringsCsv(rows: readonly QaReviewRow[]): string {
-  const headers = [
-    "id",
-    "source_path",
-    "original",
-    "translated",
-    "score_0_to_10",
-    "reviewer_feedback_judge",
-  ] as const;
-  const lines = [
-    headers.join(","),
-    ...rows.map((r) =>
-      [
-        csvEscapeCell(r.string_id),
-        csvEscapeCell(r.source_path),
-        csvEscapeCell(r.translation),
-        csvEscapeCell(r.translation),
-        csvEscapeCell(r.reviewer_score_0_to_10),
-        csvEscapeCell(r.reviewer_notes),
-      ].join(","),
-    ),
-  ];
-  return lines.join("\n");
-}
-
-function parseQaBundle(data: unknown): {
-  rows: QaReviewRow[];
-  threshold10: number | null;
-  jobId?: string;
-} | null {
-  if (!data || typeof data !== "object") return null;
-  const o = data as Record<string, unknown>;
-  const strings = o.strings;
-  if (!Array.isArray(strings)) return null;
-
-  const rows: QaReviewRow[] = [];
-  for (const item of strings) {
-    if (!item || typeof item !== "object") continue;
-    const r = item as Record<string, unknown>;
-    if (
-      typeof r.string_id !== "number" ||
-      typeof r.original !== "string" ||
-      typeof r.translation !== "string" ||
-      typeof r.reviewer_score_0_to_10 !== "number" ||
-      typeof r.reviewer_notes !== "string"
-    ) {
-      continue;
-    }
-    rows.push({
-      string_id: r.string_id,
-      source_path: typeof r.source_path === "string" ? r.source_path : "",
-      original: r.original,
-      translation: r.translation,
-      reviewer_score_0_to_10: r.reviewer_score_0_to_10,
-      reviewer_notes: r.reviewer_notes,
-      meets_accuracy_threshold:
-        typeof r.meets_accuracy_threshold === "boolean" ? r.meets_accuracy_threshold : undefined,
-    });
-  }
-  if (rows.length === 0) return null;
-
-  const threshold10Raw = o.accuracy_threshold_0_to_10;
-  const threshold10 =
-    typeof threshold10Raw === "number" ? threshold10Raw : null;
-  const jobIdRaw = o.job_id;
-  const jobId = typeof jobIdRaw === "string" ? jobIdRaw : undefined;
-  return { rows, threshold10, jobId };
-}
-
-function reviewerMean(rows: readonly QaReviewRow[]): number | null {
-  if (!rows.length) return null;
-  let sum = 0;
-  for (const r of rows) {
-    sum += r.reviewer_score_0_to_10;
-  }
-  return sum / rows.length;
-}
-
-function qaBundleSiblingReviewCsvKey(bundleKey: string): string | null {
-  if (!bundleKey.endsWith(".qa-bundle.json")) return null;
-  return `${bundleKey.slice(0, -".qa-bundle.json".length)}.translation-review.csv`;
-}
-
-function ProgressBar({ value }: { value: number }) {
-  const pct = Math.min(100, Math.max(0, value));
-  return (
-    <div className="h-2 overflow-hidden rounded-full bg-[var(--panel)] ring-1 ring-[var(--edge)]">
-      <div
-        className="h-full rounded-full bg-gradient-to-r from-[var(--accent)] to-[var(--accent-muted)] transition-[width] duration-700 ease-out motion-reduce:transition-none"
-        style={{ width: `${pct}%` }}
-      />
-    </div>
-  );
 }
 
 export function JobsDashboard() {
@@ -198,16 +101,19 @@ export function JobsDashboard() {
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [liveTail, setLiveTail] = useState<Record<string, string[]>>({});
-  const [preview, setPreview] = useState<PreviewState>(null);
-  const [qaTable, setQaTable] = useState<QaTableState | null>(null);
-  const [qaTableLoadKey, setQaTableLoadKey] = useState<string | null>(null);
-  /** `bundleStorageKey` + ":" + csv variant busy */
-  const [reviewCsvBusy, setReviewCsvBusy] = useState<string | null>(null);
+  const [peek, setPeek] = useState<PeekState>(null);
+  const [peekBusyId, setPeekBusyId] = useState<string | null>(null);
+  const [peekFind, setPeekFind] = useState("");
+  const [listQuery, setListQuery] = useState("");
+
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [modalPortalEl, setModalPortalEl] = useState<HTMLElement | null>(null);
 
   const tenantOk = useMemo(() => TENANT_ID.length > 0, []);
-  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useLayoutEffect(() => {
+    setModalPortalEl(document.body);
+  }, []);
 
   const fetchJobs = useCallback(async () => {
     if (!tenantOk) return;
@@ -217,17 +123,79 @@ export function JobsDashboard() {
     setJobs(data.jobs);
   }, [tenantOk]);
 
-  const hasActiveJobs = useMemo(() => {
-    const active = new Set([
-      "pending",
-      "extracting",
-      "chunking",
-      "translating",
-      "scoring",
-      "regenerating",
-    ]);
-    return jobs.some((j) => active.has(j.status));
-  }, [jobs]);
+  const requestDownloadUrl = useCallback(async (key: string) => {
+    const res = await fetch(`${API_PREFIX}/files/download-url`, {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({ key }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return (await res.json()) as { url: string };
+  }, []);
+
+  const openSourcePeek = useCallback(
+    async (job: JobRow) => {
+      const key = job.fileKey;
+      if (!key) return;
+      const lower = key.toLowerCase();
+      if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+        setError("Spreadsheet — open job to download.");
+        return;
+      }
+      setPeekBusyId(job.id);
+      setError(null);
+      try {
+        const { url } = await requestDownloadUrl(key);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(await res.text());
+        const text = await res.text();
+        const clipped =
+          text.length > 48_000 ? `${text.slice(0, 48_000)}\n\n…` : text;
+        const label = job.uploadFileLabel ?? key.split("/").pop() ?? "Source";
+        setPeekFind("");
+        setPeek({ label, body: clipped });
+      } catch (e) {
+        setError(formatApiError(e));
+      } finally {
+        setPeekBusyId(null);
+      }
+    },
+    [requestDownloadUrl],
+  );
+
+  const hasActiveJobs = useMemo(
+    () => jobs.some((j) => ACTIVE.has(j.status)),
+    [jobs],
+  );
+
+  const filteredJobs = useMemo(() => {
+    const q = listQuery.trim().toLowerCase();
+    if (!q) return jobs;
+    return jobs.filter((j) => {
+      if (j.id.toLowerCase().includes(q) || truncateJobId(j.id).includes(q)) return true;
+      if (j.status.toLowerCase().includes(q)) return true;
+      if (statusLabel(j.status).toLowerCase().includes(q)) return true;
+      if (j.uploadFileLabel?.toLowerCase().includes(q)) return true;
+      if (j.fileKey?.toLowerCase().includes(q)) return true;
+      if (langLabel(j.sourceLang).toLowerCase().includes(q)) return true;
+      const started = formatStartedAt(j.createdAt);
+      if (started.compact.toLowerCase().includes(q) || started.full.toLowerCase().includes(q))
+        return true;
+      return j.targetLangs.some(
+        (t) => t.toLowerCase().includes(q) || langLabel(t).toLowerCase().includes(q),
+      );
+    });
+  }, [jobs, listQuery]);
+
+  const peekLineHits = useMemo(() => {
+    if (!peek) return null;
+    const q = peekFind.trim().toLowerCase();
+    if (!q) return null;
+    return peek.body
+      .split("\n")
+      .map((text, i) => ({ n: i + 1, text }))
+      .filter(({ text }) => text.toLowerCase().includes(q));
+  }, [peek, peekFind]);
 
   useEffect(() => {
     if (!tenantOk || !hasActiveJobs) return;
@@ -239,15 +207,14 @@ export function JobsDashboard() {
 
   useEffect(() => {
     if (!tenantOk) {
-      setLoading(false);
+      queueMicrotask(() => setLoading(false));
       return;
     }
     let cancelled = false;
     void (async () => {
       try {
-        setLoading(true);
         await fetchJobs();
-        setError(null);
+        if (!cancelled) setError(null);
       } catch (e) {
         if (!cancelled) setError(formatApiError(e));
       } finally {
@@ -261,656 +228,364 @@ export function JobsDashboard() {
 
   useEffect(() => {
     if (!highlightId || !tenantOk) return;
-    setExpandedId(highlightId);
     requestAnimationFrame(() => {
-      cardRefs.current[highlightId]?.scrollIntoView({
+      rowRefs.current[highlightId]?.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
     });
-  }, [highlightId, tenantOk]);
+  }, [highlightId, tenantOk, jobs.length]);
 
   useEffect(() => {
-    if (!expandedId || !tenantOk || typeof EventSource === "undefined") return;
-    const url = jobEventsUrl(expandedId);
-    const es = new EventSource(url);
-
-    const pushLine = (jobId: string, line: string) => {
-      setLiveTail((prev) => {
-        const cur = prev[jobId] ?? [];
-        const next = [...cur, line].slice(-14);
-        return { ...prev, [jobId]: next };
-      });
-    };
-
-    es.onmessage = (ev) => {
-      try {
-        const raw = JSON.parse(ev.data as string) as Record<string, unknown>;
-        const phase =
-          typeof raw.phase === "string" ? raw.phase : "event";
-        const pct =
-          typeof raw.percent === "number" ? raw.percent : undefined;
-        const st =
-          typeof raw.stringsTotal === "number"
-            ? raw.stringsTotal
-            : undefined;
-        const sd =
-          typeof raw.stringsDone === "number" ? raw.stringsDone : undefined;
-        const bi =
-          typeof raw.batchIndex === "number" ? raw.batchIndex : undefined;
-        const tgt =
-          typeof raw.targetLang === "string" ? raw.targetLang : undefined;
-        const parts = [
-          phaseLabel(phase),
-          pct !== undefined ? `${pct}%` : null,
-          st !== undefined ? `${sd ?? "…"}/${st} strings` : null,
-          bi !== undefined ? `batch ${bi}` : null,
-          tgt ? langLabel(tgt) : null,
-        ].filter(Boolean);
-        pushLine(expandedId, parts.join(" · "));
-        void fetchJobs();
-      } catch {
-        pushLine(expandedId, ev.data as string);
+    if (!peek) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPeek(null);
+        setPeekFind("");
       }
     };
-
-    es.onerror = () => {
-      es.close();
-    };
-
-    return () => {
-      es.close();
-    };
-  }, [expandedId, tenantOk, fetchJobs]);
-
-  const requestDownloadUrl = async (key: string) => {
-    const res = await fetch(`${API_PREFIX}/files/download-url`, {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify({ key }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return (await res.json()) as { url: string };
-  };
-
-  const fetchParsedQaBundle = async (bundleKey: string) => {
-    const { url } = await requestDownloadUrl(bundleKey);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(await res.text());
-    const data: unknown = await res.json();
-    const parsed = parseQaBundle(data);
-    if (!parsed) throw new Error("Could not parse QA bundle (missing strings[].)");
-    const name = bundleKey.split("/").pop() ?? bundleKey;
-    return { ...parsed, name };
-  };
-
-  const downloadReviewCsvFromBundle = async (
-    bundleKey: string,
-    variant: "compare" | "replaced",
-  ) => {
-    const busyId = `${bundleKey}:${variant}`;
-    setReviewCsvBusy(busyId);
-    setError(null);
-    try {
-      const { rows, name } = await fetchParsedQaBundle(bundleKey);
-      const csv =
-        variant === "compare" ? qaRowsToCompactTableCsv(rows) : qaRowsToReplacedStringsCsv(rows);
-      const body = `\ufeff${csv}`;
-      const blob = new Blob([body], { type: "text/csv;charset=utf-8" });
-      const short = name.replace(/\.qa-bundle\.json$/i, "");
-      const mid = variant === "compare" ? "review-table" : "review-table.replaced-strings";
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${short}.${mid}.csv`;
-      a.rel = "noopener noreferrer";
-      a.click();
-      window.setTimeout(() => URL.revokeObjectURL(a.href), 2500);
-    } catch (e) {
-      setError(formatApiError(e));
-    } finally {
-      setReviewCsvBusy(null);
-    }
-  };
-
-  const downloadKey = async (key: string, fallbackName: string) => {
-    try {
-      const { url } = await requestDownloadUrl(key);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fallbackName;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.click();
-    } catch (e) {
-      setError(formatApiError(e));
-    }
-  };
-
-  const openPreview = async (key: string, title: string) => {
-    if (key.endsWith(".xlsx") || key.endsWith(".xls")) {
-      setError("Spreadsheet preview is not available in the browser — use Download.");
-      return;
-    }
-    try {
-      const { url } = await requestDownloadUrl(key);
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(await res.text());
-      const text = await res.text();
-      const clipped =
-        text.length > 120_000 ? `${text.slice(0, 120_000)}\n\n…truncated` : text;
-      setPreview({ title, body: clipped });
-    } catch (e) {
-      setError(formatApiError(e));
-    }
-  };
-
-  const openQaReviewTable = async (bundleKey: string) => {
-    const name = bundleKey.split("/").pop() ?? bundleKey;
-    setQaTableLoadKey(bundleKey);
-    setError(null);
-    try {
-      const parsed = await fetchParsedQaBundle(bundleKey);
-      const meanReviewerScore = reviewerMean(parsed.rows);
-      setQaTable({
-        title: `${name} — reviewer scores`,
-        artifactName: parsed.name,
-        bundleKey,
-        jobId: parsed.jobId,
-        rows: parsed.rows,
-        threshold10: parsed.threshold10,
-        meanReviewerScore,
-      });
-      setPreview(null);
-    } catch (e) {
-      setError(formatApiError(e));
-    } finally {
-      setQaTableLoadKey(null);
-    }
-  };
-
-  const downloadCompactReviewTableCsv = () => {
-    if (!qaTable) return;
-    const body = `\ufeff${qaRowsToCompactTableCsv(qaTable.rows)}`;
-    const blob = new Blob([body], { type: "text/csv;charset=utf-8" });
-    const short = qaTable.artifactName.replace(/\.qa-bundle\.json$/i, "");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${short}.review-table.csv`;
-    a.rel = "noopener noreferrer";
-    a.click();
-    window.setTimeout(() => URL.revokeObjectURL(a.href), 2500);
-  };
-
-  const downloadModalReplacedStringsCsv = () => {
-    if (!qaTable) return;
-    const body = `\ufeff${qaRowsToReplacedStringsCsv(qaTable.rows)}`;
-    const blob = new Blob([body], { type: "text/csv;charset=utf-8" });
-    const short = qaTable.artifactName.replace(/\.qa-bundle\.json$/i, "");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${short}.review-table.replaced-strings.csv`;
-    a.rel = "noopener noreferrer";
-    a.click();
-    window.setTimeout(() => URL.revokeObjectURL(a.href), 2500);
-  };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [peek]);
 
   if (!tenantOk) {
     return (
-      <p className="mt-6 rounded-lg border border-[var(--edge)] bg-[var(--bg0)]/80 px-4 py-3 text-[13px] text-[var(--muted)]">
-        Set{" "}
-        <code className="rounded bg-[var(--panel)] px-1.5 py-0.5 font-mono text-[12px]">
+      <p
+        className="mt-8 rounded-lg border px-4 py-3 text-[13px]"
+        style={{ borderColor: JL.border, color: JL.muted }}
+      >
+        <code className="rounded bg-[#111] px-1.5 py-0.5 font-mono text-[12px]">
           NEXT_PUBLIC_DEV_TENANT_ID
         </code>{" "}
         in{" "}
-        <code className="rounded bg-[var(--panel)] px-1.5 py-0.5 font-mono text-[12px]">
+        <code className="rounded bg-[#111] px-1.5 py-0.5 font-mono text-[12px]">
           apps/web/.env.local
         </code>
-        .
       </p>
     );
   }
 
   return (
-    <div className="mt-8 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-xl text-[13px] leading-relaxed text-[var(--muted)]">
-          Jobs persist across reloads. In-flight lists refresh automatically; open a row for a live event
-          tail (SSE plus list sync). Expanded rows show batch ETA, downloads, and text preview.
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
+    <>
+    <div
+      className="mt-8 rounded-lg border px-5 py-8 sm:px-8"
+      style={{ background: JL.bg, borderColor: JL.border, color: JL.fg }}
+    >
+      <div
+        className="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-center sm:justify-between"
+        style={{ borderColor: JL.border }}
+      >
+        <input
+          type="search"
+          value={listQuery}
+          onChange={(e) => setListQuery(e.target.value)}
+          placeholder="Search jobs…"
           disabled={loading}
+          aria-label="Search jobs"
+          className="min-h-9 w-full max-w-md rounded-[6px] border bg-transparent px-3 py-2 text-[13px] outline-none transition-opacity duration-150 placeholder:text-[#6B6B6B] disabled:opacity-35"
+          style={{ borderColor: JL.border, color: JL.fg }}
+        />
+        <button
+          type="button"
+          disabled={loading}
+          className="shrink-0 self-end text-[13px] font-normal transition-opacity duration-150 hover:opacity-80 disabled:opacity-35 sm:self-auto"
+          style={{ color: JL.accent }}
           onClick={() => void fetchJobs().catch((e) => setError(formatApiError(e)))}
         >
           Refresh
-        </Button>
+        </button>
       </div>
 
       {error ? (
-        <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-[13px] text-red-200">
+        <p className="mt-4 text-[13px]" style={{ color: JL.danger }}>
           {error}
         </p>
       ) : null}
 
       {loading ? (
-        <p className="text-[13px] text-[var(--muted)]">Loading jobs…</p>
+        <div className="mt-6 space-y-0">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={`sk-${String(i)}`}
+              className="skeleton-shine relative overflow-hidden border-b py-5 motion-reduce:animate-none"
+              style={{ borderColor: JL.border }}
+            >
+              <div className="h-3 w-24 rounded bg-neutral-700/35" />
+              <div className="mt-3 h-5 w-[min(320px,70%)] rounded bg-neutral-700/30" />
+              <div className="mt-2 h-3 w-40 rounded bg-neutral-700/25" />
+            </div>
+          ))}
+        </div>
       ) : jobs.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-[var(--edge)] bg-[var(--bg0)]/40 px-6 py-12 text-center">
-          <p className="font-[family-name:var(--font-serif)] text-lg text-[var(--fg)]">
-            No jobs yet
-          </p>
-          <p className="mt-2 text-[13px] text-[var(--muted)]">
-            Start one from{" "}
-            <Link className="text-[var(--accent)] underline-offset-4 hover:underline" href="/translate">
-              New translation
-            </Link>
-            .
-          </p>
+        <div className="mt-16 text-center text-[13px]" style={{ color: JL.muted }}>
+          <Link
+            href="/translate"
+            className="transition-opacity duration-150 hover:opacity-85"
+            style={{ color: JL.accent }}
+          >
+            New translation
+          </Link>
         </div>
       ) : (
-        <div className="grid gap-4">
-          {jobs.map((job) => {
-            const expanded = expandedId === job.id;
-            const eta = estimateEtaSeconds(job);
-            const batchLine =
-              job.batchTotal != null
-                ? `${job.batchesCompleted} / ${job.batchTotal} batches`
-                : `${job.batchesCompleted} batches processed`;
-
-            return (
-              <div
-                key={job.id}
-                ref={(el) => {
-                  cardRefs.current[job.id] = el;
-                }}
-                className={cn(
-                  "overflow-hidden rounded-xl border bg-gradient-to-b from-[var(--bg-elevated)]/90 to-[var(--panel)]/75 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] transition-colors",
-                  expanded
-                    ? "border-[var(--accent)]/50 ring-1 ring-[var(--accent)]/25"
-                    : "border-[var(--edge)] hover:border-[var(--edge-bright)]",
-                  highlightId === job.id ? "ring-2 ring-[var(--accent)]/40" : "",
-                )}
-              >
+        <div className="mt-6">
+          <h2
+            className="mb-1 text-[13px] font-medium uppercase tracking-[0.06em]"
+            style={{ color: JL.muted }}
+          >
+            Recent
+          </h2>
+          <div className="divide-y divide-[#1F1F1F]">
+            {filteredJobs.length === 0 ? (
+              <p className="py-10 text-center text-[13px]" style={{ color: JL.muted }}>
+                No matches ·{" "}
                 <button
                   type="button"
-                  className="flex w-full flex-col gap-3 px-5 py-4 text-left md:flex-row md:items-center md:justify-between"
-                  onClick={() =>
-                    setExpandedId((cur) => (cur === job.id ? null : job.id))
-                  }
+                  className="transition-opacity duration-150 hover:opacity-85"
+                  style={{ color: JL.accent }}
+                  onClick={() => setListQuery("")}
                 >
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                          job.status === "completed"
-                            ? "bg-emerald-500/15 text-emerald-200"
-                            : job.status === "failed"
-                              ? "bg-red-500/15 text-red-200"
-                              : "bg-[var(--accent)]/15 text-[var(--accent-muted)]",
-                        )}
-                      >
-                        {phaseLabel(job.status)}
-                      </span>
-                      <code className="truncate font-mono text-[11px] text-[var(--muted)]">
-                        {job.id}
-                      </code>
-                    </div>
-                    <p className="text-[13px] text-[var(--fg)]">
-                      <span className="text-[var(--muted)]">→</span>{" "}
-                      {job.targetLangs.map((t) => langLabel(t)).join(", ")}
-                      <span className="text-[var(--muted)]"> · from </span>
-                      {langLabel(job.sourceLang)}
-                    </p>
-                    <p className="text-[11px] text-[var(--muted-deep)]">
-                      {batchLine}
-                      {job.stringsTotal != null ? (
-                        <> · {job.stringsTotal.toLocaleString()} strings total</>
-                      ) : null}
-                      {job.judgePassScoreMin10 != null ? (
-                        <>
-                          {" "}
-                          · reviewer gate ≥ {job.judgePassScoreMin10.toFixed(1)}/10
-                        </>
-                      ) : null}
-                      {eta != null ? (
-                        <>
-                          {" "}
-                          · ~{formatDurationSeconds(eta)} remaining
-                          <span className="text-[var(--muted)]"> (estimate)</span>
-                        </>
-                      ) : null}
-                    </p>
-                  </div>
-                  <div className="w-full shrink-0 md:max-w-xs md:flex-1">
-                    <div className="mb-1 flex justify-between text-[10px] font-medium uppercase tracking-wider text-[var(--muted-deep)]">
-                      <span>Pipeline</span>
-                      <span className="tabular-nums">{Math.round(job.progress)}%</span>
-                    </div>
-                    <ProgressBar value={job.progress} />
-                  </div>
+                  Clear
                 </button>
+              </p>
+            ) : (
+              filteredJobs.map((job) => {
+              const active = ACTIVE.has(job.status);
+              const targets = job.targetLangs.map((t) => langLabel(t)).join(", ");
+              const source = langLabel(job.sourceLang);
+              const eta = estimateEtaSeconds(job);
+              const started = formatStartedAt(job.createdAt);
+              const batchMeta =
+                job.batchTotal != null
+                  ? `${job.batchesCompleted}/${job.batchTotal} batches`
+                  : `${job.batchesCompleted} batches`;
+              const strings =
+                job.stringsTotal != null
+                  ? `${job.stringsTotal.toLocaleString()} strings`
+                  : "—";
+              const pill = statusPillStyle(job.status);
+              const highlight = highlightId === job.id;
+              const tailParts = [
+                batchMeta,
+                strings,
+                active ? `${Math.round(job.progress)}%` : null,
+                eta != null ? `~${formatDurationSeconds(eta)} left` : null,
+              ].filter(Boolean);
+              const peekBusy = peekBusyId === job.id;
+              const canPeek = Boolean(job.fileKey);
 
-                {expanded ? (
-                  <div className="space-y-4 border-t border-[var(--edge)] bg-[var(--bg0)]/40 px-5 py-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="rounded-lg border border-[var(--edge)] bg-[var(--panel)]/40 p-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-deep)]">
-                          Live activity
-                        </p>
-                        <p className="mt-2 border-b border-[var(--edge)] pb-2 font-mono text-[11px] leading-snug text-[var(--fg-soft)]">
-                          Started · {formatJobStartedLog(job.createdAt)}
-                        </p>
-                        <ul className="mt-2 max-h-36 space-y-1 overflow-auto font-mono text-[11px] leading-snug text-[var(--muted)]">
-                          {(liveTail[job.id] ?? []).length ? (
-                            liveTail[job.id].map((line, i) => (
-                              <li key={`${i}-${line.slice(0, 24)}`}>{line}</li>
-                            ))
-                          ) : (
-                            <li className="text-[var(--muted-deep)]">
-                              Listening… translate batches appear here as SSE events arrive.
-                            </li>
-                          )}
-                        </ul>
+              return (
+                <div
+                  key={job.id}
+                  ref={(el) => {
+                    rowRefs.current[job.id] = el;
+                  }}
+                  className={cn(
+                    "rounded-md py-4 pl-1 pr-1 transition-colors duration-150 hover:bg-[#1A1A1A] focus-within:outline-none focus-within:ring-1 focus-within:ring-[#D4A847]/40",
+                    highlight && "ring-1 ring-[#D4A847]/35",
+                  )}
+                >
+                  <div className="flex flex-row items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="rounded-[6px] px-2 py-0.5 text-[13px] font-normal capitalize tracking-normal"
+                          style={{ backgroundColor: pill.bg, color: pill.fg }}
+                        >
+                          {statusLabel(job.status)}
+                        </span>
+                        <Link
+                          href={`/jobs/${job.id}`}
+                          className="font-mono text-[12px] tabular-nums transition-opacity duration-150 hover:opacity-85"
+                          style={{ color: JL.muted }}
+                        >
+                          {truncateJobId(job.id)}
+                        </Link>
                       </div>
-                      <div className="rounded-lg border border-[var(--edge)] bg-[var(--panel)]/40 p-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-deep)]">
-                          Artifacts
-                        </p>
-                        {job.judgePassScoreMin10 != null ? (
-                          <p className="mt-2 text-[11px] leading-relaxed text-[var(--muted)]">
-                            <span className="font-medium text-[var(--fg-soft)]">Reviewer gate:</span> batches below{" "}
-                            <span className="tabular-nums font-semibold text-[var(--fg)]">
-                              {job.judgePassScoreMin10.toFixed(1)}
+                      <Link
+                        href={`/jobs/${job.id}`}
+                        className="block text-[18px] font-light leading-snug tracking-wide transition-opacity duration-150 hover:opacity-90 sm:text-[20px]"
+                        style={{ color: JL.fg }}
+                      >
+                        {source}{" "}
+                        <span style={{ color: JL.muted }} className="font-light">
+                          →
+                        </span>{" "}
+                        {targets}
+                      </Link>
+                      <div
+                        className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] tracking-tight"
+                        style={{ color: JL.muted }}
+                      >
+                        <span
+                          className="font-mono text-[11px] tabular-nums"
+                          style={{ color: JL.muted }}
+                          title={started.full}
+                        >
+                          Started {started.compact}
+                        </span>
+                        {tailParts.length ? (
+                          <>
+                            <span className="select-none opacity-35" aria-hidden>
+                              ·
                             </span>
-                            /10 are retried (judge · 0–10).{" "}
-                            <span className="text-[var(--fg-soft)]">.translation-review.csv</span> is the spreadsheet
-                            with string id · source path · full columns. Each QA bundle row offers{" "}
-                            <span className="font-medium text-[var(--fg-soft)]">Review table</span>, plus{" "}
-                            <span className="font-medium text-[var(--fg-soft)]">CSV · compare</span> (original + translation)
-                            or <span className="font-medium text-[var(--fg-soft)]">CSV · replaced</span>{" "}
-                            (same columns; text slots carry catalogue-final translations only).
-                          </p>
+                            <span>{tailParts.join(" · ")}</span>
+                          </>
                         ) : null}
-                        {job.resultUrls.length ? (
-                          <ul className="mt-2 space-y-2">
-                            {job.resultUrls.map((key) => {
-                              const name = key.split("/").pop() ?? key;
-                              const isQaBundle = name.endsWith(".qa-bundle.json");
-                              const friendly = isQaBundle
-                                ? `${name} — QA bundle (JSON)`
-                                : name.endsWith(".translation-review.csv")
-                                  ? `${name} — QA spreadsheet (CSV, all columns)`
-                                  : name;
-                              const qaTableBusy = qaTableLoadKey === key;
-                              const csvCompareBusy = reviewCsvBusy === `${key}:compare`;
-                              const csvReplacedBusy = reviewCsvBusy === `${key}:replaced`;
-                              return (
-                                <li
-                                  key={key}
-                                  className="flex flex-col gap-2 border-b border-[var(--edge)]/60 py-2 last:border-0 last:pb-0 sm:flex-row sm:flex-wrap sm:items-center"
-                                >
-                                  <span className="min-w-0 shrink grow font-mono text-[12px] text-[var(--muted)]">
-                                    <span className="block truncate sm:max-w-[min(100%,28rem)]">{friendly}</span>
-                                  </span>
-                                  <span className="flex flex-wrap items-center gap-2">
-                                  <button
-                                    type="button"
-                                    className="rounded-md border border-[var(--edge-bright)] px-2 py-1 text-[11px] font-medium text-[var(--fg)] hover:bg-[var(--panel)]"
-                                    onClick={() => void downloadKey(key, name)}
-                                  >
-                                    Download
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={isQaBundle}
-                                    title={
-                                      isQaBundle
-                                        ? "Open Review table instead — QA JSON is formatted for grids, not line preview."
-                                        : undefined
-                                    }
-                                    className={cn(
-                                      "rounded-md border border-transparent px-2 py-1 text-[11px] font-medium text-[var(--accent-muted)] hover:bg-[var(--accent)]/10",
-                                      isQaBundle && "cursor-not-allowed opacity-40 hover:bg-transparent",
-                                    )}
-                                    onClick={() => void openPreview(key, name)}
-                                  >
-                                    Preview
-                                  </button>
-                                  {isQaBundle ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        disabled={qaTableBusy}
-                                        className="rounded-md border border-[var(--accent)]/35 bg-[var(--accent)]/10 px-2 py-1 text-[11px] font-semibold text-[var(--accent-muted)] hover:bg-[var(--accent)]/18 disabled:opacity-50"
-                                        onClick={() => void openQaReviewTable(key)}
-                                      >
-                                        {qaTableBusy ? "Loading…" : "Review table"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={csvCompareBusy || qaTableBusy}
-                                        className="rounded-md border border-[var(--edge-bright)] bg-[var(--bg0)]/50 px-2 py-1 text-[11px] font-medium text-[var(--fg-soft)] hover:bg-[var(--panel)] disabled:opacity-50"
-                                        title="Source + translation columns (same layout as Review table CSV)"
-                                        onClick={() =>
-                                          void downloadReviewCsvFromBundle(key, "compare")
-                                        }
-                                      >
-                                        {csvCompareBusy ? "CSV…" : "CSV · compare"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={csvReplacedBusy || qaTableBusy}
-                                        className="rounded-md border border-[var(--edge-bright)] bg-[var(--bg0)]/50 px-2 py-1 text-[11px] font-medium text-[var(--fg-soft)] hover:bg-[var(--panel)] disabled:opacity-50"
-                                        title="Same CSV columns; original + translated fields both repeat the catalogue-ready translation"
-                                        onClick={() =>
-                                          void downloadReviewCsvFromBundle(key, "replaced")
-                                        }
-                                      >
-                                        {csvReplacedBusy ? "CSV…" : "CSV · replaced"}
-                                      </button>
-                                    </>
-                                  ) : null}
-                                  </span>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        ) : (
-                          <p className="mt-2 text-[12px] text-[var(--muted)]">
-                            Outputs appear when the job completes regenerating files.
-                          </p>
-                        )}
-                        {job.errorMessage ? (
-                          <p className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-2 text-[11px] text-red-100">
-                            {job.errorMessage}
-                          </p>
+                        {canPeek ? (
+                          <>
+                            <span className="select-none opacity-35" aria-hidden>
+                              ·
+                            </span>
+                            <button
+                              type="button"
+                              disabled={peekBusy}
+                              title="Quick read of the uploaded source file"
+                              aria-busy={peekBusy}
+                              className="border-0 bg-transparent p-0 text-[12px] font-normal underline decoration-dotted underline-offset-[3px] transition-opacity duration-150 hover:opacity-90 disabled:cursor-wait disabled:opacity-50"
+                              style={{ color: JL.accent }}
+                              onClick={() => void openSourcePeek(job)}
+                            >
+                              Source
+                            </button>
+                          </>
                         ) : null}
                       </div>
+                      {active ? (
+                        <div className="max-w-md overflow-hidden bg-[#141414]">
+                          <div
+                            className={cn(
+                              "jd-job-progress-shimmer h-[2px] motion-reduce:animate-none",
+                            )}
+                            style={{ width: `${Math.round(job.progress)}%` }}
+                          />
+                        </div>
+                      ) : null}
                     </div>
+                    <Link
+                      href={`/jobs/${job.id}`}
+                      className="shrink-0 self-center pt-0.5 text-[13px] transition-opacity duration-150 hover:opacity-85"
+                      style={{ color: JL.muted }}
+                      aria-label="Open job"
+                    >
+                      <span className="tabular-nums" style={{ color: JL.accent }}>
+                        →
+                      </span>
+                    </Link>
                   </div>
-                ) : null}
-              </div>
-            );
-          })}
+                </div>
+              );
+              })
+            )}
+          </div>
         </div>
       )}
 
-      {preview ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Preview"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setPreview(null);
-          }}
-        >
-          <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--edge)] bg-[var(--bg0)] shadow-2xl">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--edge)] px-5 py-3">
-              <p className="min-w-0 truncate font-medium text-[var(--fg)]">{preview.title}</p>
+    </div>
+      {modalPortalEl && peekBusyId
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[500] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[1px] sm:p-6"
+              role="status"
+              aria-live="polite"
+              aria-label="Loading source file"
+            >
+              <div
+                className="flex max-w-sm items-center gap-3 rounded-lg border px-5 py-4 shadow-2xl"
+                style={{ background: JL.bg, borderColor: JL.border, color: JL.fg }}
+              >
+                <span
+                  className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[#D4A847]/25 border-t-[#D4A847] motion-reduce:animate-none motion-reduce:border-[#D4A847]/60"
+                  aria-hidden
+                />
+                <span className="text-[13px] leading-snug">Opening source…</span>
+              </div>
+            </div>,
+            modalPortalEl,
+          )
+        : null}
+      {modalPortalEl && peek
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[500] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[1px] sm:p-6"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Source peek"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) {
+                  setPeek(null);
+                  setPeekFind("");
+                }
+              }}
+            >
+              <div
+                className="flex min-h-0 w-[min(100%,42rem)] max-h-[min(70vh,560px)] max-w-2xl flex-col overflow-hidden rounded-lg border shadow-2xl"
+                style={{ background: JL.bg, borderColor: JL.border, color: JL.fg }}
+              >
+            <div
+              className="flex items-center justify-between gap-3 border-b px-4 py-3"
+              style={{ borderColor: JL.border }}
+            >
+              <p className="min-w-0 truncate font-mono text-[12px]" style={{ color: JL.muted }}>
+                {peek.label}
+              </p>
               <button
                 type="button"
-                className="shrink-0 rounded-lg border border-[var(--edge)] px-3 py-1.5 text-[12px] font-medium text-[var(--fg)] hover:bg-[var(--panel)]"
-                onClick={() => setPreview(null)}
+                className="shrink-0 text-[12px] transition-opacity duration-150 hover:opacity-80"
+                style={{ color: JL.accent }}
+                onClick={() => {
+                  setPeek(null);
+                  setPeekFind("");
+                }}
               >
                 Close
               </button>
             </div>
-            <pre className="flex-1 overflow-auto p-5 font-mono text-[11px] leading-relaxed text-[var(--muted)]">
-              {preview.body}
-            </pre>
-          </div>
-        </div>
-      ) : null}
-
-      {qaTable ? (
-        <div
-          className="fixed inset-0 z-[105] flex items-center justify-center bg-black/65 p-4 pb-8 pt-6 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-label={qaTable.title}
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setQaTable(null);
-          }}
-        >
-          <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-[var(--edge)] bg-[var(--bg0)] shadow-2xl">
-            <div className="flex flex-col gap-3 border-b border-[var(--edge)] px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <p className="font-[family-name:var(--font-serif)] text-[15px] font-semibold text-[var(--fg)]">
-                  Review table
+            <div className="border-b px-4 py-2" style={{ borderColor: JL.border }}>
+              <input
+                type="search"
+                value={peekFind}
+                onChange={(e) => setPeekFind(e.target.value)}
+                placeholder="Find in file…"
+                aria-label="Find in file"
+                className="w-full min-h-8 rounded-[6px] border bg-transparent px-2.5 py-1.5 text-[12px] outline-none placeholder:text-[#6B6B6B]"
+                style={{ borderColor: JL.border, color: JL.fg }}
+              />
+            </div>
+            {peekLineHits ? (
+              peekLineHits.length === 0 ? (
+                <p className="p-4 text-center text-[13px]" style={{ color: JL.muted }}>
+                  No matches
                 </p>
-                <p className="mt-1 font-mono text-[11px] text-[var(--muted)]">{qaTable.artifactName}</p>
-                <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--muted)]">
-                  <div className="flex flex-wrap items-baseline gap-1">
-                    <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-deep)]">
-                      Mean judge score
-                    </dt>
-                    <dd className="tabular-nums font-semibold text-[var(--fg)]">
-                      {qaTable.meanReviewerScore != null
-                        ? `${qaTable.meanReviewerScore.toFixed(2)} / 10`
-                        : "—"}
-                    </dd>
-                  </div>
-                  <div className="flex flex-wrap items-baseline gap-1">
-                    <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-deep)]">
-                      Strings reviewed
-                    </dt>
-                    <dd className="tabular-nums text-[var(--fg-soft)]">{qaTable.rows.length.toLocaleString()}</dd>
-                  </div>
-                  {qaTable.threshold10 != null ? (
-                    <div className="flex flex-wrap items-baseline gap-1">
-                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-deep)]">
-                        Batch retry below
-                      </dt>
-                      <dd className="tabular-nums text-[var(--fg-soft)]">{qaTable.threshold10.toFixed(1)} / 10</dd>
+              ) : (
+                <div
+                  className="min-h-0 flex-1 overflow-auto font-mono text-[11px] leading-relaxed"
+                  style={{ color: JL.fg }}
+                >
+                  {peekLineHits.map(({ n, text }) => (
+                    <div
+                      key={n}
+                      className="flex gap-2 border-b border-[#1F1F1F]/80 px-4 py-0.5"
+                      style={{ borderColor: JL.border }}
+                    >
+                      <span className="w-9 shrink-0 select-none tabular-nums opacity-50">{n}</span>
+                      <span className="min-w-0 whitespace-pre-wrap break-all">{text}</span>
                     </div>
-                  ) : null}
-                  {qaTable.jobId ? (
-                    <div className="flex min-w-[12rem] max-w-full flex-wrap items-baseline gap-1">
-                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-deep)]">
-                        Job
-                      </dt>
-                      <dd className="truncate font-mono text-[11px] text-[var(--fg-soft)]">{qaTable.jobId}</dd>
-                    </div>
-                  ) : null}
-                </dl>
+                  ))}
+                </div>
+              )
+            ) : (
+              <pre
+                className="min-h-0 flex-1 overflow-auto p-4 font-mono text-[11px] leading-relaxed"
+                style={{ color: JL.fg }}
+              >
+                {peek.body}
+              </pre>
+            )}
               </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setQaTable(null)}>
-                  Close
-                </Button>
-                {qaBundleSiblingReviewCsvKey(qaTable.bundleKey) ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const fk = qaBundleSiblingReviewCsvKey(qaTable.bundleKey);
-                      const fn = fk?.split("/").pop();
-                      if (fk && fn) void downloadKey(fk, fn);
-                    }}
-                  >
-                    Full QA CSV
-                  </Button>
-                ) : null}
-                <Button type="button" variant="outline" size="sm" onClick={downloadCompactReviewTableCsv}>
-                  CSV · compare
-                </Button>
-                <Button type="button" size="sm" onClick={downloadModalReplacedStringsCsv}>
-                  CSV · replaced
-                </Button>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-auto px-0">
-              <div className="overflow-x-auto">
-                <table className="w-max min-w-full border-collapse text-left text-[11px] text-[var(--fg)]">
-                  <thead className="sticky top-0 z-[1] border-b border-[var(--edge)] bg-[var(--panel)]/92 backdrop-blur-sm">
-                    <tr>
-                      <th className="whitespace-nowrap px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-deep)]">
-                        ID
-                      </th>
-                      <th className="whitespace-nowrap px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-deep)]">
-                        Source
-                      </th>
-                      <th className="min-w-[10rem] max-w-[22rem] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-deep)]">
-                        Original
-                      </th>
-                      <th className="min-w-[10rem] max-w-[22rem] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-deep)]">
-                        Translated
-                      </th>
-                      <th className="whitespace-nowrap px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-deep)]">
-                        Score
-                      </th>
-                      <th className="min-w-[12rem] max-w-[26rem] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-deep)]">
-                        Feedback (judge)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {qaTable.rows.map((r, i) => {
-                      const below =
-                        qaTable.threshold10 != null &&
-                        r.reviewer_score_0_to_10 + 1e-9 < qaTable.threshold10;
-                      return (
-                        <tr
-                          key={`${r.string_id}-${i}`}
-                          className={cn(
-                            "border-b border-[var(--edge)] odd:bg-[var(--bg0)]/40 even:bg-[var(--panel)]/15",
-                            below && "bg-amber-500/[0.04]",
-                          )}
-                        >
-                          <td className="whitespace-nowrap px-4 py-2.5 align-top tabular-nums font-mono text-[var(--fg-soft)]">
-                            {r.string_id}
-                          </td>
-                          <td className="max-w-[10rem] px-4 py-2.5 align-top font-mono text-[10px] text-[var(--muted)]">
-                            <span className="break-all leading-snug">{r.source_path || "—"}</span>
-                          </td>
-                          <td className="max-w-[22rem] px-4 py-2.5 align-top leading-snug text-[var(--fg-soft)]">
-                            <span className="break-words">{r.original}</span>
-                          </td>
-                          <td className="max-w-[22rem] px-4 py-2.5 align-top leading-snug text-[var(--fg)]">
-                            <span className="break-words">{r.translation}</span>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-2.5 align-top tabular-nums font-semibold text-[var(--fg)]">
-                            {r.reviewer_score_0_to_10.toFixed(1)}
-                          </td>
-                          <td className="max-w-[26rem] px-4 py-2.5 align-top leading-snug text-[var(--muted)]">
-                            <span className="break-words">{r.reviewer_notes}</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
+            </div>,
+            modalPortalEl,
+          )
+        : null}
+    </>
   );
 }

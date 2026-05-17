@@ -60,6 +60,7 @@ function qaRowsToReviewCsv(
     reviewer_score_0_to_10: number;
     reviewer_notes: string;
     meets_accuracy_threshold: boolean;
+    translator_attempt_number?: number;
   }[],
 ): string {
   const headers = [
@@ -179,6 +180,7 @@ export class TranslationOrchestratorService {
           reviewer_score_0_to_10: number;
           reviewer_notes: string;
           meets_accuracy_threshold: boolean;
+          translator_attempt_number?: number;
         };
         const qaRows: QaRow[] = [];
 
@@ -261,8 +263,7 @@ export class TranslationOrchestratorService {
                 administratorSystemPrompt: tmpl.systemText,
                 administratorUserTemplate: userTemplateFilled,
                 batchSourceLang: job.sourceLang,
-                batchSourceLangDisplayName:
-                  sourceCfg?.name ?? job.sourceLang,
+                batchSourceLangDisplayName: sourceCfg?.name ?? job.sourceLang,
                 batchStringIds: extracted.stringIds.slice(
                   offset,
                   offset + batch.length,
@@ -324,6 +325,7 @@ export class TranslationOrchestratorService {
                   reviewer_score_0_to_10: scores[bi],
                   reviewer_notes: feedback[bi],
                   meets_accuracy_threshold: scores[bi] >= threshold10,
+                  translator_attempt_number: attempt,
                 });
               }
               ordered.push(...trans);
@@ -378,8 +380,7 @@ export class TranslationOrchestratorService {
           reviewer_model_id: reviewerModelId.trim(),
           accuracy_threshold_0_to_1: threshold01,
           accuracy_threshold_0_to_10: threshold10,
-          copy:
-            'Each row is one catalog string: original from source file, translation from the translator model, reviewer_notes / score from the Quality reviewer model.',
+          copy: 'Each row is one catalog string: original from source file, translation from the translator model, reviewer_notes / score from the Quality reviewer model.',
           strings: qaRows,
         };
         const qaKey = `results/${job.tenantId}/${jobId}/${targetLang}.qa-bundle.json`;

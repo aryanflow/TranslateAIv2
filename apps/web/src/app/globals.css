@@ -110,6 +110,42 @@ html::before {
   .animate-in-delay-2 {
     animation-delay: 0.12s;
   }
+
+  @keyframes jd-job-log-dot-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .jd-job-log-dot-pulse {
+    animation: jd-job-log-dot-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes jd-job-progress-shimmer {
+    0% {
+      background-position: 0% 50%;
+    }
+    100% {
+      background-position: 200% 50%;
+    }
+  }
+
+  .jd-job-progress-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(212, 168, 71, 0.35),
+      #d4a847,
+      #f0daa0,
+      #d4a847,
+      rgba(212, 168, 71, 0.35)
+    );
+    background-size: 240% 100%;
+    animation: jd-job-progress-shimmer 2.2s ease-in-out infinite;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -117,6 +153,16 @@ html::before {
   .animate-in-delay-1,
   .animate-in-delay-2 {
     animation: none;
+  }
+
+  .jd-job-log-dot-pulse {
+    animation: none;
+  }
+
+  .jd-job-progress-shimmer {
+    animation: none;
+    background: #d4a847;
+    background-size: auto;
   }
 }
 

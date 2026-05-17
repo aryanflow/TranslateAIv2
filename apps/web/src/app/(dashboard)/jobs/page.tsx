@@ -5,11 +5,7 @@ import { JobsDashboard } from "@/components/jobs/JobsDashboard";
 export default function JobsPage() {
   return (
     <div className="animate-in">
-      <PageHeader
-        eyebrow="Operations"
-        title="Jobs"
-        description="Live pipeline visuals, batch counts, ETA hints, SSE activity, and downloads when regeneration completes."
-      />
+      <PageHeader eyebrow="Operations" title="Jobs" />
       <Suspense
         fallback={
           <p className="mt-8 text-[13px] text-[var(--muted)]">Loading jobs…</p>

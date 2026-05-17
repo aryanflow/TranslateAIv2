@@ -781,7 +781,7 @@ export function TranslateWizardShell() {
                 <p className="mt-1 max-w-prose text-[13px] leading-relaxed text-[var(--muted)]">
                   Progress saves automatically. Reload anytime;{" "}
                   <Link
-                    href={`/jobs?highlight=${activeJobId}`}
+                    href={`/jobs/${activeJobId}`}
                     className="font-medium text-[var(--accent-muted)] underline-offset-4 hover:underline"
                   >
                     open this job on the Jobs board

@@ -53,6 +53,10 @@ export class JobsService {
     if (!job) {
       throw new NotFoundException();
     }
+    const retriedBatchCount = await this.prisma.jobBatch.count({
+      where: { jobId: job.id, attempt: { gt: 1 } },
+    });
+    const uploadFileLabel = job.fileKey.split('/').pop() ?? job.fileKey;
     return {
       id: job.id,
       status: job.status,
@@ -62,6 +66,10 @@ export class JobsService {
       stringsTotal: job.stringsTotal,
       batchTotal: job.batchTotal,
       batchesCompleted: job._count.batches,
+      batchSize: job.batchSize,
+      fileKey: job.fileKey,
+      uploadFileLabel,
+      retriedBatchCount,
       perTargetProgress: Object.fromEntries(
         job.targetLangs.map((l) => [l, job.progress]),
       ),
@@ -87,22 +95,27 @@ export class JobsService {
       },
     });
     return {
-      jobs: jobs.map((job) => ({
-        id: job.id,
-        status: job.status,
-        progress: job.progress,
-        sourceLang: job.sourceLang,
-        targetLangs: job.targetLangs,
-        batchSize: job.batchSize,
-        stringsTotal: job.stringsTotal,
-        batchTotal: job.batchTotal,
-        batchesCompleted: job._count.batches,
-        createdAt: job.createdAt.toISOString(),
-        updatedAt: job.updatedAt.toISOString(),
-        errorMessage: job.errorMessage,
-        resultUrls: job.resultUrls,
-        ...this.judgeThresholdFields(job),
-      })),
+      jobs: jobs.map((job) => {
+        const uploadFileLabel = job.fileKey.split('/').pop() ?? job.fileKey;
+        return {
+          id: job.id,
+          status: job.status,
+          progress: job.progress,
+          sourceLang: job.sourceLang,
+          targetLangs: job.targetLangs,
+          batchSize: job.batchSize,
+          stringsTotal: job.stringsTotal,
+          batchTotal: job.batchTotal,
+          batchesCompleted: job._count.batches,
+          fileKey: job.fileKey,
+          uploadFileLabel,
+          createdAt: job.createdAt.toISOString(),
+          updatedAt: job.updatedAt.toISOString(),
+          errorMessage: job.errorMessage,
+          resultUrls: job.resultUrls,
+          ...this.judgeThresholdFields(job),
+        };
+      }),
     };
   }
 
