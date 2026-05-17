@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Companion to fixture-pos-micro.json — same six American English POS strings for Browse / ingest tests.
+  Shape matches extractor: wrapping element + <original_string> per aptos parity (see xml.format.ts).
+-->
+<localization>
+  <string name="storefront.welcome_title">
+    <original_string>Welcome to checkout</original_string>
+  </string>
+  <string name="storefront.sku_placeholder">
+    <original_string>Scan or enter SKU</original_string>
+  </string>
+  <string name="storefront.buttons.pay_now">
+    <original_string>Pay now</original_string>
+  </string>
+  <string name="storefront.buttons.cancel">
+    <original_string>Cancel</original_string>
+  </string>
+  <string name="notifications.price_updated">
+    <original_string>Price updated</original_string>
+  </string>
+  <string name="notifications.item_removed">
+    <original_string>Item removed from cart</original_string>
+  </string>
+</localization>

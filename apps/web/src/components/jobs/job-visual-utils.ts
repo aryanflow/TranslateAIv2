@@ -34,3 +34,18 @@ export function formatDurationSeconds(sec: number): string {
   if (sec < 3600) return `${Math.round(sec / 60)} min`;
   return `${(sec / 3600).toFixed(1)} h`;
 }
+
+/** Local wall clock for job timeline (live activity Started line). */
+export function formatJobStartedLog(isoDate: string): string {
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return isoDate;
+  try {
+    // `timeZoneName` + `dateStyle`/`timeStyle` together reject in many engines (Node, some browsers).
+    return d.toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "medium",
+    });
+  } catch {
+    return d.toISOString();
+  }
+}

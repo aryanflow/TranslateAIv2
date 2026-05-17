@@ -100,6 +100,7 @@ function fixtureMime(href: string): string {
   const n = fixtureBasename(href).toLowerCase();
   if (n.endsWith(".json")) return "application/json";
   if (n.endsWith(".csv")) return "text/csv";
+  if (n.endsWith(".xml")) return "application/xml";
   return "application/octet-stream";
 }
 
@@ -131,6 +132,16 @@ const SAMPLE_FIXTURES = [
     subtitle: "Bare-bones nested POS",
     detail: "Six leaf strings — quick extractor sanity.",
     format: "JSON" as const,
+    approxStrings: "6",
+    intent: "Smoke",
+  },
+  {
+    id: "pos-micro-xml",
+    href: "/fixtures/fixture-pos-micro.xml",
+    title: "Micro smoke · XML",
+    subtitle: "<string> · original_string",
+    detail: "Twin of micro JSON — six POS strings in aptos XML extract shape.",
+    format: "XML" as const,
     approxStrings: "6",
     intent: "Smoke",
   },
@@ -169,7 +180,13 @@ const SAMPLE_FIXTURES = [
 type FixtureTile = (typeof SAMPLE_FIXTURES)[number];
 
 type ImportProvenance =
-  | { kind: "fixture"; href: string; displayName: string; format: "JSON" | "CSV"; approxStrings: string }
+  | {
+      kind: "fixture";
+      href: string;
+      displayName: string;
+      format: "JSON" | "CSV" | "XML";
+      approxStrings: string;
+    }
   | { kind: "upload"; displayName: string };
 
 /** Upload → extract preview → single target → job + resilient progress UX */
@@ -481,7 +498,7 @@ export function TranslateWizardShell() {
                 </>
               ) : (
                 <>
-                  Peek <span className="text-[var(--fg-soft)]">bundled</span> JSON/CSV
+                  Peek <span className="text-[var(--fg-soft)]">bundled</span> JSON · CSV · XML
                 </>
               )}
             </button>
@@ -508,7 +525,7 @@ export function TranslateWizardShell() {
               </span>
               <span className="hidden sm:inline">Corner icon: offline copy.</span>
               <span className="ml-auto shrink-0 rounded bg-[var(--bg0)]/85 px-1.5 py-px font-mono text-[9px] text-[var(--muted-deep)]">
-                XML · XLSX → Browse only
+                XLSX → Browse only
               </span>
             </div>
           <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden">
