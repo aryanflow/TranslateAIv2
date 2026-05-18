@@ -63,83 +63,13 @@ export class HealthService {
   }
 
   async getDeps() {
-    let postgres: {
-      status: DepStatus;
-      latencyMs?: number;
-      lastError?: string | null;
-    } = {
-      status: 'down',
-    };
-    try {
-      const t0 = performance.now();
-      await this.prisma.$queryRaw`SELECT 1`;
-      postgres = {
-        status: 'up',
-        latencyMs: Math.round(performance.now() - t0),
-        lastError: null,
-      };
-    } catch (e) {
-      postgres = {
-        status: 'down',
-        lastError: e instanceof Error ? e.message : 'unknown',
-      };
-    }
-
-    let redis: {
-      status: DepStatus;
-      latencyMs?: number;
-      lastError?: string | null;
-    } = {
-      status: 'unknown',
-    };
-    const rurl = this.config.get<string>('REDIS_URL', 'redis://127.0.0.1:6379');
-    const redisConn = new Redis(rurl, { maxRetriesPerRequest: null });
-    try {
-      const t0 = performance.now();
-      await redisConn.ping();
-      redis = {
-        status: 'up',
-        latencyMs: Math.round(performance.now() - t0),
-        lastError: null,
-      };
-    } catch (e) {
-      redis = {
-        status: 'down',
-        lastError: e instanceof Error ? e.message : 'unknown',
-      };
-    } finally {
-      await redisConn.quit().catch(() => undefined);
-    }
-
-    let s3: {
-      status: DepStatus;
-      latencyMs?: number;
-      lastError?: string | null;
-    } = {
-      status: 'unknown',
-    };
-    try {
-      const client = this.buildS3Client();
-      const bucket = this.config.get<string>(
-        'S3_BUCKET',
-        'aptos-translate-uploads',
-      );
-      const t0 = performance.now();
-      await client.send(new HeadBucketCommand({ Bucket: bucket }));
-      s3 = {
-        status: 'up',
-        latencyMs: Math.round(performance.now() - t0),
-        lastError: null,
-      };
-    } catch (e) {
-      s3 = {
-        status: 'down',
-        lastError: e instanceof Error ? e.message : 'unknown',
-      };
-    }
-
-    const translator = await this.probeTranslator();
-    const judge = await this.probeJudge();
+    const [postgres, redis, s3, translator, judge] = await Promise.all([
+      this.probePostgres(),
+      this.probeRedis(),
+      this.probeS3(),
+      this.probeTranslator(),
+      this.probeJudge(),
+    ]);
 
     return {
       postgres,
@@ -150,6 +80,78 @@ export class HealthService {
         judge,
       },
     };
+  }
+
+  private async probePostgres(): Promise<{
+    status: DepStatus;
+    latencyMs?: number;
+    lastError?: string | null;
+  }> {
+    try {
+      const t0 = performance.now();
+      await this.prisma.$queryRaw`SELECT 1`;
+      return {
+        status: 'up',
+        latencyMs: Math.round(performance.now() - t0),
+        lastError: null,
+      };
+    } catch (e) {
+      return {
+        status: 'down',
+        lastError: e instanceof Error ? e.message : 'unknown',
+      };
+    }
+  }
+
+  private async probeRedis(): Promise<{
+    status: DepStatus;
+    latencyMs?: number;
+    lastError?: string | null;
+  }> {
+    const rurl = this.config.get<string>('REDIS_URL', 'redis://127.0.0.1:6379');
+    const redisConn = new Redis(rurl, { maxRetriesPerRequest: null });
+    try {
+      const t0 = performance.now();
+      await redisConn.ping();
+      return {
+        status: 'up',
+        latencyMs: Math.round(performance.now() - t0),
+        lastError: null,
+      };
+    } catch (e) {
+      return {
+        status: 'down',
+        lastError: e instanceof Error ? e.message : 'unknown',
+      };
+    } finally {
+      await redisConn.quit().catch(() => undefined);
+    }
+  }
+
+  private async probeS3(): Promise<{
+    status: DepStatus;
+    latencyMs?: number;
+    lastError?: string | null;
+  }> {
+    try {
+      const client = this.buildS3Client();
+      const bucket = this.config.get<string>(
+        'S3_BUCKET',
+        'aptos-translate-uploads',
+      );
+      const t0 = performance.now();
+      await client.send(new HeadBucketCommand({ Bucket: bucket }));
+      return {
+        status: 'up',
+        latencyMs: Math.round(performance.now() - t0),
+        lastError: null,
+      };
+    } catch (e) {
+      return {
+        status: 'down',
+        lastError: e instanceof Error ? e.message : 'unknown',
+      };
+    }
   }
 
   async putActiveModels(
@@ -237,6 +239,7 @@ export class HealthService {
         user: 'Ping.',
         maxTokens: 64,
         temperature: 0,
+        maxRetriesOverride: 1,
       });
       return {
         id: 'bedrock',
@@ -283,6 +286,7 @@ export class HealthService {
         user: 'Ping.',
         maxTokens: 64,
         temperature: 0,
+        maxRetriesOverride: 1,
       });
       return {
         id: 'bedrock',

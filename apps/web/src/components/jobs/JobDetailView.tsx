@@ -524,20 +524,24 @@ export function JobDetailView({ jobId }: { jobId: string }) {
     if (!job || job.status !== "completed" || qaMean == null) return log;
     if (log.some((row) => row.id === "review-pass")) return log;
     const tEnd = Date.parse(job.updatedAt);
+    const logMaxAtMs = log.reduce(
+      (m, r) => (Number.isFinite(r.atMs) ? Math.max(m, r.atMs) : m),
+      0,
+    );
     const row: LogRow = {
       id: "review-pass",
-      atMs: (() => {
-        const t0 = Date.parse(job.createdAt);
-        if (Number.isFinite(tEnd) && Number.isFinite(t0))
-          return Math.max(t0, tEnd - 2000);
-        return Number.isFinite(tEnd) ? tEnd : t0;
-      })(),
+      atMs:
+        Number.isFinite(tEnd) && Number.isFinite(logMaxAtMs)
+          ? Math.max(tEnd, logMaxAtMs + 1)
+          : Number.isFinite(tEnd)
+            ? tEnd
+            : Number.isFinite(logMaxAtMs)
+              ? logMaxAtMs + 1
+              : Date.now(),
       message: `Review passed · ${qaMean.toFixed(1)} / 10`,
       tone: "success",
     };
-    const doneIdx = log.findLastIndex((r) => r.message === "Completed");
-    if (doneIdx === -1) return [...log, row];
-    return [...log.slice(0, doneIdx), row, ...log.slice(doneIdx)];
+    return [...log, row];
   }, [log, job, qaMean]);
 
   const qaRowsFiltered = useMemo(() => {

@@ -479,6 +479,11 @@ export class TranslationOrchestratorService {
 
               let attempt = 0;
               let trans: string[] = [];
+              /** Rich retry line + optional SSE fields, shown on the *next* attempt's progress event (avoids duplicate log lines). */
+              let pendingAttemptPublish: {
+                detail: string;
+                extra?: Record<string, unknown>;
+              } | null = null;
 
               while (attempt < maxRetries) {
                 attempt += 1;
@@ -514,10 +519,15 @@ export class TranslationOrchestratorService {
                   }
                   const phase: 'translating' | 'scoring' =
                     attempt === 1 ? 'translating' : 'scoring';
+                  const fromPending = pendingAttemptPublish;
+                  if (fromPending) {
+                    pendingAttemptPublish = null;
+                  }
                   const detail =
                     attempt === 1
                       ? `${targetLang}: batch ${localIdx + 1}/${batches.length} started`
-                      : `${targetLang}: batch ${localIdx + 1}/${batches.length} · retry ${attempt}/${maxRetries}`;
+                      : fromPending?.detail ??
+                        `${targetLang}: batch ${localIdx + 1}/${batches.length} · translate attempt ${attempt}/${maxRetries}`;
                   await this.events.publish(jobId, {
                     phase,
                     detail,
@@ -527,6 +537,7 @@ export class TranslationOrchestratorService {
                     batchIndex: gBatchIdx,
                     attempt,
                     percent: Math.round(pct),
+                    ...(fromPending?.extra ?? {}),
                   });
                 });
 
@@ -693,37 +704,27 @@ export class TranslationOrchestratorService {
                       `samples: ${samples}`,
                     ].join(' — '),
                   );
+                  const nextAttempt = attempt + 1;
+                  const shortWhy =
+                    diag.code === 'SCORING_DEGRADED_FALLBACK'
+                      ? 'judge error, neutral scores'
+                      : diag.summaryLine;
                   const sseDetail = truncateForLog(
-                    `${targetLang}: batch ${localIdx + 1}/${batches.length} · re-translate (${attempt}→${attempt + 1}): ${diag.code === 'SCORING_DEGRADED_FALLBACK' ? 'judge error, neutral scores' : `${diag.belowThresholdCount} under ${diag.threshold10}`} · ${diag.summaryLine}`,
+                    `${targetLang}: batch ${localIdx + 1}/${batches.length} · translate attempt ${nextAttempt}/${maxRetries} after low judge scores (${diag.code}) · ${shortWhy}`,
                     420,
                   );
-                  const contiguousRetry = contiguousDoneStrings(
-                    batchDoneFlags,
-                    batches,
-                  );
-                  const pctRetry = Math.min(
-                    95,
-                    5 +
-                      (85 * contiguousRetry) /
-                        Math.max(1, extracted.originals.length),
-                  );
-                  await this.events.publish(jobId, {
-                    phase: 'scoring',
+                  pendingAttemptPublish = {
                     detail: sseDetail,
-                    stringsDone: contiguousRetry,
-                    stringsTotal: extracted.originals.length,
-                    targetLang,
-                    batchIndex: gBatchIdx,
-                    attempt,
-                    percent: Math.round(pctRetry),
-                    retryReason: diag.code,
-                    belowThresholdCount: diag.belowThresholdCount,
-                    judgeThreshold10: diag.threshold10,
-                    judgeMin: diag.minScore,
-                    judgeMax: diag.maxScore,
-                    judgeAvg: Math.round(diag.avgScore * 100) / 100,
-                    worstStringIds: diag.worstSamples.map((w) => w.sid),
-                  });
+                    extra: {
+                      retryReason: diag.code,
+                      belowThresholdCount: diag.belowThresholdCount,
+                      judgeThreshold10: diag.threshold10,
+                      judgeMin: diag.minScore,
+                      judgeMax: diag.maxScore,
+                      judgeAvg: Math.round(diag.avgScore * 100) / 100,
+                      worstStringIds: diag.worstSamples.map((w) => w.sid),
+                    },
+                  };
                 }
               }
 

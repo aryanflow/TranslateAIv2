@@ -37,8 +37,14 @@ export class BedrockConverseService {
     user: string;
     maxTokens?: number;
     temperature?: number;
+    /** When set (e.g. health probes), avoids long multi-attempt backoff for faster /health/deps. */
+    maxRetriesOverride?: number;
   }): Promise<string> {
-    const maxRetries = Number(this.config.get<string>('MAX_RETRIES', '3'));
+    const maxRetries = Math.max(
+      1,
+      params.maxRetriesOverride ??
+        Number(this.config.get<string>('MAX_RETRIES', '3')),
+    );
     const baseDelay = Number(this.config.get<string>('RETRY_DELAY_BASE', '2'));
     const maxDelay = Number(this.config.get<string>('MAX_RETRY_DELAY', '10'));
 
