@@ -301,7 +301,7 @@ export function TranslateWizardShell() {
   const [importProvenance, setImportProvenance] = useState<ImportProvenance | null>(null);
   const [sourceLang, setSourceLang] = useState<string>("american_english");
   const [targetLang, setTargetLang] = useState<string>("spanish");
-  const [batchSize, setBatchSize] = useState(80);
+  const [batchSize, setBatchSize] = useState(50);
   const [busySubmit, setBusySubmit] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -702,11 +702,8 @@ export function TranslateWizardShell() {
       <StepCard step={1} title="Import catalogue">
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-[var(--muted)]">
-            Browse JSON, CSV, XML, or XLSX — presign and extractor handle every format the same way.{" "}
-            <span className="text-[var(--fg-soft)]">
-              JSON: only string values are translated; property keys stay as stable paths in the file.
-            </span>{" "}
-            CSV: after upload you choose which column(s) hold the copy to localize.
+            Import JSON, CSV, XML, or Excel. User-visible strings are translated; structure and keys stay unchanged. For
+            CSV, select source columns after the file loads.
           </p>
           {tenantOk ? (
             <button

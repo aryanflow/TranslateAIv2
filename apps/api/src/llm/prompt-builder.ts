@@ -95,6 +95,7 @@ TRANSLATION BATCH CONFIG (apply together with CUSTOM INSTRUCTIONS above)
 
 Operational notes:
 - Produce output only in ${config.name} for translatable prose; follow preservation rules defined in system context.
+- Hard requirements for this product: (1) same count of ampersand (U+0026) characters as each source segment for Win32 mnemonics; (2) in "… Fe Resource ID" / Mandatory / Code Type style lines, keep short Latin field tokens (Fe, Str, Lp, No, Id, Asn, Po) in Latin — never spell them into the target alphabet.
 ${examplesSection}
 ${additionalContextSection}
 Proceed with structured JSON instructions attached below.

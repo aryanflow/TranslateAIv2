@@ -108,6 +108,33 @@ function formatDurationApprox(startIso: string, endIso: string) {
   return `${h}h ${m}m`;
 }
 
+const TEXT_PREVIEW_KEY_RE =
+  /\.(json|xml|csv|txt|md|tsv|htm|html|svg)(\?|#|$)/i;
+
+function objectKeyUsesTextPreview(key: string): boolean {
+  const path = key.split("?")[0]?.split("#")[0] ?? key;
+  return TEXT_PREVIEW_KEY_RE.test(path);
+}
+
+function formatTextPreviewBody(raw: string, key: string): string {
+  const base = key.split("?")[0]?.toLowerCase() ?? "";
+  if (base.endsWith(".json")) {
+    try {
+      return JSON.stringify(JSON.parse(raw) as unknown, null, 2);
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
+}
+
+type FilePreviewPanelState =
+  | { kind: "closed" }
+  | { kind: "loading"; title: string }
+  | { kind: "text"; title: string; body: string }
+  | { kind: "iframe"; title: string; url: string }
+  | { kind: "error"; title: string; message: string };
+
 function sseToFriendlyLine(payload: Record<string, unknown>): { message: string; tone: LogTone } {
   const phase = typeof payload.phase === "string" ? payload.phase : "event";
 
@@ -119,6 +146,9 @@ function sseToFriendlyLine(payload: Record<string, unknown>): { message: string;
     case "chunking":
       return { message: "Batch dispatched", tone: "muted" };
     case "translating": {
+      const detail =
+        typeof payload.detail === "string" ? payload.detail.trim() : "";
+      if (detail) return { message: detail, tone: "info" };
       const bi = typeof payload.batchIndex === "number" ? payload.batchIndex : undefined;
       return {
         message: bi !== undefined ? `Translating · batch ${bi + 1}` : "Translating",
@@ -126,6 +156,9 @@ function sseToFriendlyLine(payload: Record<string, unknown>): { message: string;
       };
     }
     case "scoring": {
+      const detail =
+        typeof payload.detail === "string" ? payload.detail.trim() : "";
+      if (detail) return { message: detail, tone: "info" };
       const bi = typeof payload.batchIndex === "number" ? payload.batchIndex : undefined;
       return {
         message: bi !== undefined ? `Quality review · batch ${bi + 1}` : "Quality review",
@@ -208,6 +241,7 @@ export function JobDetailView({ jobId }: { jobId: string }) {
   const [reviewSearch, setReviewSearch] = useState("");
   const [idCopied, setIdCopied] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [filePreview, setFilePreview] = useState<FilePreviewPanelState>({ kind: "closed" });
 
   const logRef = useRef<LogRow[]>([]);
 
@@ -250,6 +284,38 @@ export function JobDetailView({ jobId }: { jobId: string }) {
       a.click();
     } catch (e) {
       setLoadError(formatApiError(e));
+    }
+  };
+
+  const previewKey = async (key: string, title: string) => {
+    setFilePreview({ kind: "loading", title });
+    try {
+      const { url } = await requestDownloadUrl(key);
+      if (objectKeyUsesTextPreview(key)) {
+        const r = await fetch(url, { credentials: "omit" });
+        if (!r.ok) {
+          setFilePreview({
+            kind: "error",
+            title,
+            message: `Could not load file (HTTP ${String(r.status)}).`,
+          });
+          return;
+        }
+        const raw = await r.text();
+        setFilePreview({
+          kind: "text",
+          title,
+          body: formatTextPreviewBody(raw, key),
+        });
+      } else {
+        setFilePreview({ kind: "iframe", title, url });
+      }
+    } catch (e) {
+      setFilePreview({
+        kind: "error",
+        title,
+        message: formatApiError(e),
+      });
     }
   };
 
@@ -306,6 +372,20 @@ export function JobDetailView({ jobId }: { jobId: string }) {
     }, 4000);
     return () => window.clearInterval(id);
   }, [tenantOk, job, active, fetchJob]);
+
+  useEffect(() => {
+    if (filePreview.kind === "closed") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFilePreview({ kind: "closed" });
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [filePreview.kind]);
 
   /** Seed timeline for terminal jobs (no SSE history). */
   useEffect(() => {
@@ -638,19 +718,35 @@ export function JobDetailView({ jobId }: { jobId: string }) {
                           {uploadLabel}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        disabled={!job.fileKey}
-                        className="mt-3 text-[14px] font-normal transition-opacity duration-150 hover:opacity-90 disabled:pointer-events-none disabled:opacity-30"
-                        style={{ color: JD.accent }}
-                        onClick={() =>
-                          job.fileKey
-                            ? void downloadKey(job.fileKey, job.uploadFileLabel || uploadLabel || "source")
-                            : undefined
-                        }
-                      >
-                        ↓ Download
-                      </button>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+                        <button
+                          type="button"
+                          disabled={!job.fileKey}
+                          className="text-[14px] font-normal transition-opacity duration-150 hover:opacity-90 disabled:pointer-events-none disabled:opacity-30"
+                          style={{ color: JD.accent }}
+                          onClick={() =>
+                            job.fileKey ? void previewKey(job.fileKey, uploadLabel) : undefined
+                          }
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!job.fileKey}
+                          className="text-[14px] font-normal transition-opacity duration-150 hover:opacity-90 disabled:pointer-events-none disabled:opacity-30"
+                          style={{ color: JD.accent }}
+                          onClick={() =>
+                            job.fileKey
+                              ? void downloadKey(
+                                  job.fileKey,
+                                  job.uploadFileLabel || uploadLabel || "source",
+                                )
+                              : undefined
+                          }
+                        >
+                          ↓ Download
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -670,19 +766,29 @@ export function JobDetailView({ jobId }: { jobId: string }) {
                             </span>
                           </div>
                           {translatedKey ? (
-                            <button
-                              type="button"
-                              className="mt-3 text-[14px] font-normal transition-opacity duration-150 hover:opacity-90"
-                              style={{ color: JD.accent }}
-                              onClick={() =>
-                                void downloadKey(
-                                  translatedKey,
-                                  translatedLabel.split("/").pop() ?? "translated",
-                                )
-                              }
-                            >
-                              ↓ Download
-                            </button>
+                            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+                              <button
+                                type="button"
+                                className="text-[14px] font-normal transition-opacity duration-150 hover:opacity-90"
+                                style={{ color: JD.accent }}
+                                onClick={() => void previewKey(translatedKey, translatedLabel)}
+                              >
+                                Preview
+                              </button>
+                              <button
+                                type="button"
+                                className="text-[14px] font-normal transition-opacity duration-150 hover:opacity-90"
+                                style={{ color: JD.accent }}
+                                onClick={() =>
+                                  void downloadKey(
+                                    translatedKey,
+                                    translatedLabel.split("/").pop() ?? "translated",
+                                  )
+                                }
+                              >
+                                ↓ Download
+                              </button>
+                            </div>
                           ) : null}
                         </>
                       ) : (
@@ -880,6 +986,110 @@ export function JobDetailView({ jobId }: { jobId: string }) {
           </>
         )}
       </div>
+
+      {filePreview.kind !== "closed" ? (
+        <div
+          className="fixed inset-0 z-[140] flex items-center justify-center p-4 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="jd-file-preview-title"
+        >
+          <button
+            type="button"
+            aria-label="Close preview"
+            className="absolute inset-0 bg-black/80 backdrop-blur-[2px] transition-opacity duration-150"
+            onClick={() => setFilePreview({ kind: "closed" })}
+          />
+          <div
+            className="relative z-10 flex max-h-[min(92vh,940px)] w-full max-w-[min(100%,56rem)] flex-col overflow-hidden rounded-xl border shadow-2xl motion-safe:animate-in"
+            style={{ borderColor: JD.border, background: JD.surface, color: JD.fg }}
+          >
+            <header
+              className="flex shrink-0 items-start justify-between gap-4 border-b px-5 py-4"
+              style={{ borderColor: JD.border }}
+            >
+              <div className="min-w-0">
+                <div
+                  className="text-[11px] font-medium uppercase tracking-[0.08em]"
+                  style={{ color: JD.muted }}
+                >
+                  Preview
+                </div>
+                <h2
+                  id="jd-file-preview-title"
+                  className={cn("mt-1 truncate text-[15px] font-normal leading-snug", monoClass())}
+                  title={filePreview.title}
+                >
+                  {filePreview.title}
+                </h2>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 border-[#2a2a2a] bg-transparent text-[13px] text-[var(--fg)] hover:bg-[#1a1a1a]"
+                onClick={() => setFilePreview({ kind: "closed" })}
+              >
+                Close
+              </Button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-hidden bg-[#0d0d0d]">
+              {filePreview.kind === "loading" ? (
+                <div className="flex flex-col items-center justify-center gap-3 px-6 py-24">
+                  <div
+                    className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent motion-reduce:animate-none"
+                    style={{ borderColor: `${JD.accent}55`, borderTopColor: JD.accent }}
+                    aria-hidden
+                  />
+                  <p className="text-[13px]" style={{ color: JD.muted }}>
+                    Loading file…
+                  </p>
+                </div>
+              ) : null}
+
+              {filePreview.kind === "error" ? (
+                <div className="space-y-3 px-6 py-10">
+                  <p className="text-[13px]" style={{ color: JD.danger }}>
+                    {filePreview.message}
+                  </p>
+                  <p className="text-[12px] leading-relaxed" style={{ color: JD.muted }}>
+                    If this is a CORS issue, configure your storage bucket to allow GET from this
+                    origin, or use Download instead.
+                  </p>
+                </div>
+              ) : null}
+
+              {filePreview.kind === "text" ? (
+                <pre
+                  className={cn(
+                    "max-h-[min(72vh,720px)] overflow-auto p-5 text-[12px] leading-relaxed whitespace-pre-wrap break-words",
+                    monoClass(),
+                  )}
+                  style={{ color: JD.fg }}
+                >
+                  {filePreview.body}
+                </pre>
+              ) : null}
+
+              {filePreview.kind === "iframe" ? (
+                <div className="flex min-h-[min(64vh,560px)] flex-col">
+                  <p className="border-b px-5 py-2.5 text-[12px] leading-snug" style={{ borderColor: JD.border, color: JD.muted }}>
+                    Embedded view — if the file does not render here, use{" "}
+                    <span style={{ color: JD.fg }}>Download</span>.
+                  </p>
+                  <iframe
+                    title={filePreview.title}
+                    src={filePreview.url}
+                    className="min-h-[min(58vh,500px)] w-full flex-1 border-0 bg-[#fafafa]"
+                    sandbox=""
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

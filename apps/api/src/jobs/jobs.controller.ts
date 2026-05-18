@@ -61,12 +61,12 @@ class CreateJobDto {
   @IsString({ each: true })
   targetLangs!: string[];
 
-  @ApiProperty({ required: false, default: 200 })
+  @ApiProperty({ required: false, default: 50 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(2000)
-  batchSize = 200;
+  batchSize = 50;
 
   @ApiPropertyOptional({
     description: 'Judge threshold; below triggers re-translation',

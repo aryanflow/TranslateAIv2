@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import {
   fetchUpstreamHealthDeps,
+  HEALTH_DEPS_STALE_MS,
   healthDepsQueryKey,
   type HealthDepsPayload,
   type LlmProbe,
@@ -81,6 +82,8 @@ export function DepsPanel() {
   const q = useQuery<HealthDepsPayload>({
     queryKey: healthDepsQueryKey,
     queryFn: fetchUpstreamHealthDeps,
+    staleTime: HEALTH_DEPS_STALE_MS,
+    gcTime: 20 * 60 * 1000,
   });
 
   if (q.isLoading) {

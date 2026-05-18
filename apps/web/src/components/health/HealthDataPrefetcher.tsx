@@ -5,38 +5,37 @@ import { useEffect } from "react";
 import {
   fetchUpstreamHealthDeps,
   fetchUpstreamVersion,
+  HEALTH_DEPS_STALE_MS,
   healthDepsQueryKey,
+  UPSTREAM_VERSION_STALE_MS,
   upstreamVersionQueryKey,
 } from "@/lib/health-queries";
 
+const PREFETCH_GC_MS = 20 * 60 * 1000;
+
 /**
- * Warm the React Query cache for Health & Build panels while the user is elsewhere
- * in the dashboard (idle-time fetch, non-blocking).
+ * Warm the React Query cache for Health & Build as soon as any dashboard route mounts.
+ * Uses a non-zero staleTime so opening `/health` reuses the cache instead of refetching
+ * immediately (deps probes are slow). Idle-only scheduling was too easy to starve on busy
+ * pages like Translate.
  */
 export function HealthDataPrefetcher() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const run = () => {
-      void queryClient.prefetchQuery({
-        queryKey: healthDepsQueryKey,
-        queryFn: fetchUpstreamHealthDeps,
-      });
-      void queryClient.prefetchQuery({
-        queryKey: upstreamVersionQueryKey,
-        queryFn: fetchUpstreamVersion,
-      });
-    };
-
-    if (typeof window === "undefined") return;
-
-    if ("requestIdleCallback" in window) {
-      const id = window.requestIdleCallback(run, { timeout: 5000 });
-      return () => window.cancelIdleCallback(id);
-    }
-
-    const t = window.setTimeout(run, 400);
-    return () => window.clearTimeout(t);
+    const common = { gcTime: PREFETCH_GC_MS } as const;
+    void queryClient.prefetchQuery({
+      queryKey: healthDepsQueryKey,
+      queryFn: fetchUpstreamHealthDeps,
+      staleTime: HEALTH_DEPS_STALE_MS,
+      ...common,
+    });
+    void queryClient.prefetchQuery({
+      queryKey: upstreamVersionQueryKey,
+      queryFn: fetchUpstreamVersion,
+      staleTime: UPSTREAM_VERSION_STALE_MS,
+      ...common,
+    });
   }, [queryClient]);
 
   return null;

@@ -1,5 +1,9 @@
 /** Shared React Query keys + fetchers for `/health` and background prefetch. */
 
+/** Deps payload includes Bedrock probes — avoid treating prefetch as stale the moment it lands. */
+export const HEALTH_DEPS_STALE_MS = 90_000;
+export const UPSTREAM_VERSION_STALE_MS = 300_000;
+
 export type LlmProbe = {
   id: string;
   provider: string;

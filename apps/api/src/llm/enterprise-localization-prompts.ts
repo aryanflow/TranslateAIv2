@@ -41,11 +41,13 @@ Do NOT translate the glossary entries themselves.
 | Pickup            | Customer collection of a reserved/purchased order (Click & Collect).            |
 | Opt-in            | Customer explicit consent to receive marketing or communications.                |
 | Scope / Scoping   | Data filtering: include only matching rows/items for a process.                 |
+| Fe (suffix token) | In strings like "Merchandise Key Fe Resource ID" — keep **Fe** as Latin letters; it is a field-binding token, not a word to translate into the target script. |
+| No / Str / Lp     | In schema-style titles ("Location No", "Originating Str", "Lp Status") beside words like Resource ID, Mandatory, Code Type — keep those short codes in Latin with the same casing. |
 
 ────────────────────────────────────────────────────────────
 PRESERVATION RULES — ABSOLUTE, NO EXCEPTIONS
 ────────────────────────────────────────────────────────────
-1. Acronyms: never translate — OMS, WMS, POS, CRM, ERP, API, SQL, SKU, ID.
+1. Acronyms and fixed codes: never translate — OMS, WMS, POS, PO, ASN, CRM, ERP, API, SQL, SKU, ID.
 2. Numbers and identifiers: preserve exactly — 1, 99.99, ID123, REF-456.
 3. Placeholders: keep intact — [{0}], [{1}], [name], {variable}, %s, %d, %1$s, \${param}.
 4. System/app names: do not translate — Planning, Allocation, Service Manager, etc.
@@ -53,6 +55,9 @@ PRESERVATION RULES — ABSOLUTE, NO EXCEPTIONS
 6. Inline symbols in terms like 'Card #' or 'Ref $': keep as-is. Do not substitute with 'N°' or remove.
 7. HTML/Markdown/formatting tags: leave untouched.
 8. Spacing and line structure: do not add or remove spaces or newlines.
+9. Windows / Win32 / MFC keyboard mnemonics: In desktop ERP and POS UIs, an ampersand (U+0026) immediately before a letter marks the accelerator (Alt+underline). The output string MUST contain the same number of ampersand characters as the source segment — never delete them for readability. Keep each ampersand immediately before the target-language letter that should carry the hotkey when that is clear; if ambiguous, preserve ampersand placement in the same relative position within the phrase as in the source. If the source uses two consecutive ampersands for one literal ampersand character, keep that double pattern unchanged.
+10. Schema-style catalog keys: When English mixes readable words with short Latin tokens (Fe, Str, Lp, Asn, Po, No as in "number", Id) next to fixed phrases such as "Resource ID", "Mandatory", "Code Type", "Heading", "Factor", "By Host", keep those tokens in Latin with the same casing. Translate only the human-readable words around them. Never spell Fe, Str, or Lp into the target alphabet — that breaks data binding and menu codes.
+11. API / class names: Preserve exact spellings of identifiers (e.g. CSTSMenuManager, ISTSApplicationDLLInit, Initialize(), Add, Remove) when they refer to code or modules; translate only plain-language glue around them if the string is user-facing.
 
 ────────────────────────────────────────────────────────────
 QUALITY STANDARDS
@@ -88,6 +93,8 @@ SCORING ORDER (apply sequentially per pair)
    - Acronyms unchanged.
    - Numbers and placeholders intact: [{0}], [{1}], {var}, %s, %d.
    - Symbols, spacing, and formatting preserved.
+   - Windows/MFC menu captions: output must contain the same number of ampersand (U+0026) characters as the source line (accelerator markup). Removing or adding ampersands used as mnemonics is a technical failure.
+   - Schema tokens (Fe, Str, Lp, Asn, Po in "… Resource ID", Mandatory, Code Type lines): must stay Latin — transliterating them into the target script is a severe defect (treat as broken binding; cap technical score unless the rest is perfect).
 
 3) Professional quality
    - Native fluency with established retail/POS terminology.

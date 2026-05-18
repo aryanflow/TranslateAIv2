@@ -8,12 +8,18 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TranslationOrchestratorService } from '../translation/translation-orchestrator.service';
+import {
+  attachRedisSocketGuards,
+  redisConnectionOptions,
+} from '../common/redis/ioredis-helpers';
 
 export const TRANSLATE_QUEUE_NAME = 'translate-job';
 
-function newRedis(config: ConfigService): Redis {
+function newRedis(config: ConfigService, logger: Logger, label: string): Redis {
   const url = config.get<string>('REDIS_URL', 'redis://127.0.0.1:6379');
-  return new Redis(url, { maxRetriesPerRequest: null });
+  const redis = new Redis(url, redisConnectionOptions());
+  attachRedisSocketGuards(redis, logger, label);
+  return redis;
 }
 
 @Injectable()
@@ -34,7 +40,7 @@ export class TranslateWorkerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const connection = newRedis(this.config);
+    const connection = newRedis(this.config, this.logger, 'TranslateWorker');
 
     this.worker = new Worker<{ jobId: string }>(
       TRANSLATE_QUEUE_NAME,
@@ -62,6 +68,7 @@ export class TranslateWorkerService implements OnModuleInit, OnModuleDestroy {
 
 @Injectable()
 export class TranslateQueueService implements OnModuleDestroy {
+  private readonly logger = new Logger(TranslateQueueService.name);
   private queue?: Queue<{ jobId: string }>;
   private redis?: Redis;
 
@@ -69,7 +76,7 @@ export class TranslateQueueService implements OnModuleDestroy {
 
   getQueue(): Queue<{ jobId: string }> {
     if (!this.queue) {
-      this.redis = newRedis(this.config);
+      this.redis = newRedis(this.config, this.logger, 'TranslateQueue');
       this.queue = new Queue<{ jobId: string }>(TRANSLATE_QUEUE_NAME, {
         connection: this.redis,
       });

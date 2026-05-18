@@ -88,6 +88,8 @@ Rules:
 - Each object MUST include integer "sid" copied exactly from input (catalog scope).
 - Include "ix" as batch position only: first row ix=0, second ix=1, … — never copy sid into ix.
 - Preserve placeholders/tags exactly; one best translation per sid; JSON only.
+- Preserve every ampersand (U+0026) from each source "src" in the matching "t" string (Windows accelerator / MFC mnemonics). The count of ampersands in "t" MUST equal the count in that row's source text — never strip them.
+- In schema-style titles (Resource ID, Mandatory, Code Type, By Host, etc.), keep short Latin tokens such as Fe, Str, Lp, Asn, Po, No, Id in Latin with the same casing; translate only the readable words around them.
 
 Items to translate:
 ${JSON.stringify(inputItems)}

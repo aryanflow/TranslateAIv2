@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchUpstreamVersion,
+  UPSTREAM_VERSION_STALE_MS,
   upstreamVersionQueryKey,
   type UpstreamVersionPayload,
 } from "@/lib/health-queries";
@@ -11,6 +12,8 @@ export function BuildInfo() {
   const q = useQuery<UpstreamVersionPayload>({
     queryKey: upstreamVersionQueryKey,
     queryFn: fetchUpstreamVersion,
+    staleTime: UPSTREAM_VERSION_STALE_MS,
+    gcTime: 20 * 60 * 1000,
   });
 
   if (q.isLoading) {
