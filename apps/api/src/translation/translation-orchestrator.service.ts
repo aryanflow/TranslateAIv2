@@ -162,6 +162,100 @@ function normalizeScorerId(raw: string): ScorerKind {
   return 'bedrock';
 }
 
+/** Default raised from 4 → 8: more parallel Bedrock batches when quota allows. Override via env. */
+const DEFAULT_TRANSLATION_BATCH_CONCURRENCY = 8;
+const MAX_TRANSLATION_BATCH_CONCURRENCY = 24;
+
+function resolveTranslationBatchConcurrency(config: ConfigService): number {
+  const raw = config.get<string>('TRANSLATION_BATCH_CONCURRENCY');
+  if (raw == null || String(raw).trim() === '') {
+    return DEFAULT_TRANSLATION_BATCH_CONCURRENCY;
+  }
+  const n = Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isFinite(n) || n < 1) {
+    return DEFAULT_TRANSLATION_BATCH_CONCURRENCY;
+  }
+  return Math.min(MAX_TRANSLATION_BATCH_CONCURRENCY, n);
+}
+
+/** Bedrock scorer catch-path returns 5.0 + "Scoring failed: …" for every row (see bedrock-scorer.service). */
+function scoringAppearsDegraded(
+  scores: readonly number[],
+  feedback: readonly string[],
+): boolean {
+  if (scores.length === 0 || feedback.length !== scores.length) return false;
+  if (!scores.every((s) => s === 5.0)) return false;
+  return feedback.some((f) => /Scoring failed:/i.test(f));
+}
+
+type ScoreRetryDiagnostics = {
+  code: 'SCORE_BELOW_THRESHOLD' | 'SCORING_DEGRADED_FALLBACK';
+  belowThresholdCount: number;
+  threshold10: number;
+  minScore: number;
+  maxScore: number;
+  avgScore: number;
+  worstSamples: { sid: number; score: number; noteSnippet: string }[];
+  summaryLine: string;
+};
+
+function buildScoreRetryDiagnostics(args: {
+  stringIds: readonly number[];
+  scores: readonly number[];
+  feedback: readonly string[];
+  threshold10: number;
+}): ScoreRetryDiagnostics {
+  const degraded = scoringAppearsDegraded(args.scores, args.feedback);
+  const code: ScoreRetryDiagnostics['code'] = degraded
+    ? 'SCORING_DEGRADED_FALLBACK'
+    : 'SCORE_BELOW_THRESHOLD';
+
+  const belowIdx: number[] = [];
+  let sum = 0;
+  let minS = Infinity;
+  let maxS = -Infinity;
+  for (let i = 0; i < args.scores.length; i++) {
+    const s = args.scores[i]!;
+    sum += s;
+    minS = Math.min(minS, s);
+    maxS = Math.max(maxS, s);
+    if (s < args.threshold10) belowIdx.push(i);
+  }
+  const avg = args.scores.length ? sum / args.scores.length : 0;
+  const worstSamples = belowIdx
+    .map((i) => ({
+      sid: args.stringIds[i]!,
+      score: args.scores[i]!,
+      noteSnippet: (args.feedback[i] ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160),
+    }))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 5);
+
+  const summaryLine = degraded
+    ? 'Judge call failed or returned unusable JSON — neutral 5.0 scores used; batch will be re-translated.'
+    : `${belowIdx.length}/${args.scores.length} strings under judge threshold ${args.threshold10} (min ${minS === Infinity ? '—' : minS.toFixed(1)} · avg ${avg.toFixed(2)} · max ${maxS === -Infinity ? '—' : maxS.toFixed(1)})`;
+
+  return {
+    code,
+    belowThresholdCount: belowIdx.length,
+    threshold10: args.threshold10,
+    minScore: minS === Infinity ? 0 : minS,
+    maxScore: maxS === -Infinity ? 0 : maxS,
+    avgScore: avg,
+    worstSamples,
+    summaryLine,
+  };
+}
+
+function truncateForLog(s: string, max: number): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
 /** Streams from S3 → extract → batched dual-LLM → regenerate → S3 (see docs/ARCHITECTURE.md). */
 @Injectable()
 export class TranslationOrchestratorService {
@@ -345,18 +439,7 @@ export class TranslationOrchestratorService {
 
         const sourceCfg = LANG_CONFIG[job.sourceLang];
 
-        const batchConc = Math.max(
-          1,
-          Math.min(
-            16,
-            (() => {
-              const raw =
-                this.config.get<string>('TRANSLATION_BATCH_CONCURRENCY') ?? '4';
-              const n = Number.parseInt(String(raw).trim(), 10);
-              return Number.isFinite(n) && n > 0 ? n : 4;
-            })(),
-          ),
-        );
+        const batchConc = resolveTranslationBatchConcurrency(this.config);
         this.logger.log(
           `Job ${jobId.slice(0, 8)} · ${targetLang}: up to ${batchConc} parallel batches (${batches.length} total, ${extracted.originals.length} strings)`,
         );
@@ -487,6 +570,13 @@ export class TranslationOrchestratorService {
                 const scores = scored.scores;
                 const feedback = scored.feedback;
                 const below = scores.filter((s) => s < threshold10).length;
+                const degradedJudge = scoringAppearsDegraded(scores, feedback);
+                const batchLastError =
+                  below > 0
+                    ? degradedJudge
+                      ? 'SCORING_FAILED'
+                      : 'SCORE_LOW'
+                    : null;
 
                 await this.prisma.jobBatch.upsert({
                   where: {
@@ -500,18 +590,34 @@ export class TranslationOrchestratorService {
                     judgeScore: scores.length
                       ? scores.reduce((a, b) => a + b, 0) / scores.length
                       : null,
-                    lastErrorCode: below > 0 ? 'SCORE_LOW' : null,
+                    lastErrorCode: batchLastError,
                   },
                   update: {
                     attempt,
                     judgeScore: scores.length
                       ? scores.reduce((a, b) => a + b, 0) / scores.length
                       : null,
-                    lastErrorCode: below > 0 ? 'SCORE_LOW' : null,
+                    lastErrorCode: batchLastError,
                   },
                 });
 
                 if (below === 0 || attempt >= maxRetries) {
+                  if (below > 0 && attempt >= maxRetries) {
+                    const diag = buildScoreRetryDiagnostics({
+                      stringIds: stringIdSlice,
+                      scores,
+                      feedback,
+                      threshold10,
+                    });
+                    this.logger.warn(
+                      [
+                        `job=${jobId.slice(0, 8)} · ${targetLang} · batch ${localIdx + 1}/${batches.length} (index #${gBatchIdx + 1})`,
+                        `accepting batch after max retries (${maxRetries}) with ${diag.belowThresholdCount} strings still below ${diag.threshold10}`,
+                        `reason=${diag.code}`,
+                        diag.summaryLine,
+                      ].join(' — '),
+                    );
+                  }
                   const qaSlice: QaRow[] = [];
                   for (let bi = 0; bi < batch.length; bi++) {
                     qaSlice.push({
@@ -560,6 +666,64 @@ export class TranslationOrchestratorService {
                   );
 
                   return { translations: trans, qaSlice };
+                }
+
+                if (attempt < maxRetries) {
+                  const diag = buildScoreRetryDiagnostics({
+                    stringIds: stringIdSlice,
+                    scores,
+                    feedback,
+                    threshold10,
+                  });
+                  const samples =
+                    diag.worstSamples.length > 0
+                      ? diag.worstSamples
+                          .map(
+                            (w) =>
+                              `#${w.sid}=${w.score.toFixed(1)}:${truncateForLog(w.noteSnippet, 100)}`,
+                          )
+                          .join(' | ')
+                      : '(no per-row samples)';
+                  this.logger.warn(
+                    [
+                      `job=${jobId.slice(0, 8)} · ${targetLang} · batch ${localIdx + 1}/${batches.length} (index #${gBatchIdx + 1})`,
+                      `translator re-run: next attempt ${attempt + 1}/${maxRetries}`,
+                      `reason=${diag.code}`,
+                      diag.summaryLine,
+                      `samples: ${samples}`,
+                    ].join(' — '),
+                  );
+                  const sseDetail = truncateForLog(
+                    `${targetLang}: batch ${localIdx + 1}/${batches.length} · re-translate (${attempt}→${attempt + 1}): ${diag.code === 'SCORING_DEGRADED_FALLBACK' ? 'judge error, neutral scores' : `${diag.belowThresholdCount} under ${diag.threshold10}`} · ${diag.summaryLine}`,
+                    420,
+                  );
+                  const contiguousRetry = contiguousDoneStrings(
+                    batchDoneFlags,
+                    batches,
+                  );
+                  const pctRetry = Math.min(
+                    95,
+                    5 +
+                      (85 * contiguousRetry) /
+                        Math.max(1, extracted.originals.length),
+                  );
+                  await this.events.publish(jobId, {
+                    phase: 'scoring',
+                    detail: sseDetail,
+                    stringsDone: contiguousRetry,
+                    stringsTotal: extracted.originals.length,
+                    targetLang,
+                    batchIndex: gBatchIdx,
+                    attempt,
+                    percent: Math.round(pctRetry),
+                    retryReason: diag.code,
+                    belowThresholdCount: diag.belowThresholdCount,
+                    judgeThreshold10: diag.threshold10,
+                    judgeMin: diag.minScore,
+                    judgeMax: diag.maxScore,
+                    judgeAvg: Math.round(diag.avgScore * 100) / 100,
+                    worstStringIds: diag.worstSamples.map((w) => w.sid),
+                  });
                 }
               }
 

@@ -83,7 +83,7 @@ model JobBatch {
   job           Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
   tenantId      String
   batchIndex    Int
-  lastErrorCode String? // e.g. PLACEHOLDER_MISMATCH, SCORE_LOW, PROVIDER_429
+  lastErrorCode String? // e.g. PLACEHOLDER_MISMATCH, SCORE_LOW, SCORING_FAILED
   attempt       Int     @default(0)
   judgeScore    Float?
   createdAt     DateTime @default(now())
