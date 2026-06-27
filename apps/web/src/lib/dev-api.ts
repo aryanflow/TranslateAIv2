@@ -42,7 +42,11 @@ export function jobEventsUrl(jobId: string): string {
 
 export function formatApiError(e: unknown): string {
   if (e instanceof TypeError) {
-    return `Cannot reach the API via ${API_PREFIX} (${e.message}). Start the API, set API_PROXY_TARGET or NEXT_PUBLIC_API_URL for local dev, and ensure Postgres/Redis are up.`;
+    return (
+      `Network request failed (${e.message}). ` +
+      `If this happened during file upload after presign, start MinIO: \`pnpm compose:full-deps\` (port 9000). ` +
+      `Otherwise ensure \`pnpm dev\` is running and open http://localhost:3000 — check \`curl -sS http://localhost:3001/health/live\`.`
+    );
   }
   return e instanceof Error ? e.message : "Something went wrong.";
 }

@@ -13,8 +13,11 @@ import {
   TENANT_ID,
   apiHeaders,
   formatApiError,
+  jobEventsUrl,
   readUpstreamErrorBody,
 } from "@/lib/dev-api";
+import { isActiveJobStatus, sseToFriendlyLine } from "@/lib/job-events";
+import { upstreamFetch } from "@/lib/upstream-fetch";
 import { phaseLabel } from "@/components/jobs/job-visual-utils";
 import type { ReactNode } from "react";
 
@@ -133,7 +136,7 @@ function WizardRail({
               Translation job
             </p>
             <p className="truncate text-[12px] text-[var(--muted)]">
-              {activeJobId ? "Running — progress on Jobs" : "Start when catalogue is ready"}
+              {activeJobId ? "Running — live below" : "Start when catalogue is ready"}
             </p>
           </div>
         </li>
@@ -164,6 +167,7 @@ type JobPollState = {
   judgePassScoreMin10?: number;
   judgePassScoreMin01?: number;
   minTranslationScoreStored?: number | null;
+  latestDetail?: string;
 };
 
 function PipelinePulse() {
@@ -307,6 +311,9 @@ export function TranslateWizardShell() {
 
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobLive, setJobLive] = useState<JobPollState | null>(null);
+  const [jobStallHint, setJobStallHint] = useState<string | null>(null);
+
+  const lastProgressRef = useRef({ value: -1, atMs: Date.now() });
 
   const tenantOk = useMemo(() => TENANT_ID.length > 0, []);
 
@@ -448,7 +455,7 @@ export function TranslateWizardShell() {
       if (opts?.selectedColumns?.length) {
         body.selectedColumns = opts.selectedColumns;
       }
-      const res = await fetch(`${API_PREFIX}/files/preview`, {
+      const res = await upstreamFetch(`${API_PREFIX}/files/preview`, {
         method: "POST",
         headers: apiHeaders(),
         body: JSON.stringify(body),
@@ -475,7 +482,7 @@ export function TranslateWizardShell() {
 
     setIngestPhase("uploading");
     try {
-      const pre = await fetch(`${API_PREFIX}/files/presigned-url`, {
+      const pre = await upstreamFetch(`${API_PREFIX}/files/presigned-url`, {
         method: "POST",
         headers: apiHeaders(),
         body: JSON.stringify({
@@ -492,13 +499,29 @@ export function TranslateWizardShell() {
         fileKey: string;
       };
 
-      const put = await fetch(uploadUrl, {
-        method: "PUT",
-        body: file,
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
-      });
+      let put: Response;
+      try {
+        put = await fetch(uploadUrl, {
+          method: "PUT",
+          body: file,
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+        });
+      } catch (e) {
+        const host = (() => {
+          try {
+            return new URL(uploadUrl).host;
+          } catch {
+            return "object storage";
+          }
+        })();
+        throw new Error(
+          `Upload to ${host} failed (${e instanceof Error ? e.message : "network error"}). ` +
+            `Presign succeeded but the browser could not PUT the file. ` +
+            `For local dev run \`pnpm compose:full-deps\` (MinIO on :9000, console :9001) and ensure bucket aptos-translate-uploads exists.`,
+        );
+      }
       if (!put.ok) throw new Error("Upload to object storage failed.");
 
       setFileKey(key);
@@ -542,7 +565,7 @@ export function TranslateWizardShell() {
 
     const tick = async () => {
       try {
-        const res = await fetch(`${API_PREFIX}/jobs/${activeJobId}`, {
+        const res = await upstreamFetch(`${API_PREFIX}/jobs/${activeJobId}`, {
           headers: apiHeaders(),
         });
         if (!res.ok) return;
@@ -558,7 +581,7 @@ export function TranslateWizardShell() {
           minTranslationScoreStored?: number | null;
         };
         if (cancelled) return;
-        setJobLive({
+        setJobLive((prev) => ({
           id: data.id,
           status: data.status,
           progress: data.progress,
@@ -568,19 +591,82 @@ export function TranslateWizardShell() {
           judgePassScoreMin10: data.judgePassScoreMin10,
           judgePassScoreMin01: data.judgePassScoreMin01,
           minTranslationScoreStored: data.minTranslationScoreStored,
-        });
+          latestDetail: prev?.latestDetail,
+        }));
+        if (data.progress !== lastProgressRef.current.value) {
+          lastProgressRef.current = { value: data.progress, atMs: Date.now() };
+          setJobStallHint(null);
+        }
       } catch {
         /* ignore transient poll errors */
       }
     };
 
     void tick();
-    const id = window.setInterval(() => void tick(), 2200);
+    const id = window.setInterval(() => void tick(), 1500);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
   }, [activeJobId, tenantOk]);
+
+  useEffect(() => {
+    if (!activeJobId || !tenantOk || typeof EventSource === "undefined") return;
+    if (!jobLive || !isActiveJobStatus(jobLive.status)) return;
+
+    const url = jobEventsUrl(activeJobId);
+    const es = new EventSource(url);
+
+    es.onmessage = (ev) => {
+      try {
+        const payload = JSON.parse(ev.data as string) as Record<string, unknown>;
+        const { message } = sseToFriendlyLine(payload);
+        if (typeof payload.percent === "number") {
+          lastProgressRef.current = { value: payload.percent, atMs: Date.now() };
+          setJobStallHint(null);
+        }
+        setJobLive((prev) =>
+          prev
+            ? {
+                ...prev,
+                progress:
+                  typeof payload.percent === "number"
+                    ? payload.percent
+                    : prev.progress,
+                latestDetail: message,
+              }
+            : prev,
+        );
+      } catch {
+        /* ignore malformed SSE */
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+    };
+
+    return () => {
+      es.close();
+    };
+  }, [activeJobId, tenantOk, jobLive?.status]);
+
+  useEffect(() => {
+    if (!activeJobId || !jobLive || !isActiveJobStatus(jobLive.status)) {
+      setJobStallHint(null);
+      return;
+    }
+    const id = window.setInterval(() => {
+      const idleMs = Date.now() - lastProgressRef.current.atMs;
+      if (idleMs < 28_000) return;
+      setJobStallHint(
+        jobLive.latestDetail
+          ? `Still working — ${jobLive.latestDetail}`
+          : "Still working — a batch may be translating or under quality review (large batches can take a few minutes).",
+      );
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [activeJobId, jobLive?.status, jobLive?.latestDetail]);
 
   const confirmCsvColumns = useCallback(async () => {
     if (!fileKey || !tenantOk) return;
@@ -624,7 +710,7 @@ export function TranslateWizardShell() {
         previewPayload?.format === "csv" && csvSelectedColumns.length
           ? { selectedColumns: csvSelectedColumns }
           : undefined;
-      const jobRes = await fetch(`${API_PREFIX}/jobs`, {
+      const jobRes = await upstreamFetch(`${API_PREFIX}/jobs`, {
         method: "POST",
         headers: apiHeaders(),
         body: JSON.stringify({
@@ -641,6 +727,8 @@ export function TranslateWizardShell() {
       }
       const created = (await jobRes.json()) as { jobId: string };
       setActiveJobId(created.jobId);
+      lastProgressRef.current = { value: 0, atMs: Date.now() };
+      setJobStallHint(null);
       setJobLive({
         id: created.jobId,
         status: "pending",
@@ -1129,6 +1217,19 @@ export function TranslateWizardShell() {
                 </span>
               </div>
               <ProgressBar value={jobLive.progress} />
+              {jobLive.latestDetail &&
+              jobLive.status !== "completed" &&
+              jobLive.status !== "failed" &&
+              jobLive.status !== "cancelled" ? (
+                <p className="mt-2 text-[12px] leading-snug text-[var(--muted)]">
+                  {jobLive.latestDetail}
+                </p>
+              ) : null}
+              {jobStallHint ? (
+                <p className="mt-1.5 text-[11px] leading-snug text-[var(--accent-muted)]/90">
+                  {jobStallHint}
+                </p>
+              ) : null}
               <p className="mt-2 text-[11px] text-[var(--muted)]">
                 {langLabel(sourceLang)} → {langLabel(targetLang)}
                 {jobLive.batchTotal != null ? (

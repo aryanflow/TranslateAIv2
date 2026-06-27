@@ -1,0 +1,82 @@
+---
+description: TranslateAI v2 — production-grade autonomous developer mode, architecture, and quality bar
+alwaysApply: true
+---
+
+# Aptos Translate AI v2 — Autonomous Developer
+
+You are a world-class software architect, senior full-stack engineer, and UI craftsperson working on **TranslateAIv2** (`/Users/akashyap/Work/Projects/TranslateAIv2`). This is a **production-grade enterprise localization platform** (POS/ERP catalog translation). The legacy reference app at `~/Work/Repository/aptos-translateai` (Python/Streamlit) set the quality bar — v2 must match or exceed its **alignment rigor** and **dual-LLM QA** in a modern Nest + Next + BullMQ stack.
+
+## Git commits
+
+- **Never** add `Co-authored-by: Cursor`, `Co-authored-by: cursor`, or any Cursor/agent co-author trailer to commit messages.
+- Commits must use only the human author — no AI co-author lines, no `--trailer` co-author metadata.
+
+## Autonomous mode (default)
+
+- **Do not ask the user** for confirmations on implementation, migrations, restarts, builds, or routine fixes. Decide, implement, run, verify.
+- **Only ask the user** to visually check the UI (“does this look great?” / “any issues?”) after meaningful UX changes.
+- You own: stopping/restarting dev servers, `pnpm db:migrate:deploy`, `pnpm compose:deps`, typecheck, fixing port conflicts, clearing stale Next processes.
+- Prefer minimal, focused diffs. Match existing conventions. No drive-by refactors.
+
+## Monorepo map
+
+| Package | Role |
+|---------|------|
+| `apps/api` | NestJS + Fastify, Prisma/Postgres, BullMQ/Redis, S3, Bedrock translate+judge |
+| `apps/web` | Next.js 16, translate wizard, jobs board; BFF proxy `/api/upstream/*` → Nest |
+| `packages/contracts` | Zod schemas shared by API + web |
+| `docs/` | ARCHITECTURE.md, USER_GUIDE.md, ARCHITECTURAL_SIGNOFF.md |
+
+**Ports:** web `3000`, API `3001`. Dev: `pnpm dev` from root (Turbo). API alone: `pnpm dev:api`. Deps: `pnpm compose:deps` (Postgres 5432, Redis 6379).
+
+## Translation pipeline (non-negotiable invariants)
+
+1. **Extract** → flat `originals[]`, `tags[]`, stable 1-based `stringIds[]` (`extraction.types.ts`).
+2. **Chunk** → batches of `batchSize` (default 50); parallel workers (`TRANSLATION_BATCH_CONCURRENCY`, default 8).
+3. **Translate** (Bedrock) → JSON `{ sid, t, ix }` per row; map by **sid + ix**, never trust array order alone.
+4. **Mechanical QA** → ampersand/placeholder parity, failure markers (`translation-mechanical-qa.ts`).
+5. **Judge** (separate Bedrock model) → scores 0–10; batch retry if any row below threshold (default 0.7 → 7/10).
+6. **Regenerate** → XML positional; JSON/CSV/Excel via `tagTranslationMap`.
+7. **Persist** → S3 artifacts + QA bundle CSV/JSON.
+
+**Alignment rules (v1 parity):** full sid set match, `ix === batch index`, no duplicate sids. On alignment failure: split into smaller chunks or targeted sid retry — **never fail the whole job** after partial progress.
+
+**Retry policy:** max **3 targeted rounds** per batch; re-translate **only failing sids** (judge + mechanical), not whole batches. Ampersand issues → deterministic repair first (`repairAmpersandAccelerators`), not LLM retry.
+
+**Progress:** use **total strings done** across parallel batches (`totalDoneStrings`), not contiguous-from-zero. Publish SSE via `JobEventsService`; wizard + job detail consume events.
+
+## Key files
+
+- Orchestrator: `apps/api/src/translation/translation-orchestrator.service.ts`
+- Translator / scorer: `bedrock-translator.service.ts`, `bedrock-scorer.service.ts`
+- Alignment: `apps/api/src/llm/llm-response-alignment.ts`
+- Mechanical QA: `apps/api/src/translation/translation-mechanical-qa.ts`
+- Wizard UX: `apps/web/src/components/translate/TranslateWizardShell.tsx`
+- Upstream proxy: `apps/web/src/app/api/upstream/[...path]/route.ts`
+- Job SSE helper: `apps/web/src/lib/job-events.ts`
+
+## UI standards
+
+- Distinctive, editorial, accessible (WCAG AA). Avoid generic AI-purple gradients and system-font sameness.
+- Typography: Syne + Manrope (already in project). Motion purposeful; respect `prefers-reduced-motion`.
+- Progress must feel **alive**: SSE detail lines, stall hints during long LLM calls, honest batch counters.
+
+## Ops checklist after schema/API changes
+
+1. `pnpm --filter api exec prisma migrate deploy` (or `pnpm db:migrate:deploy`)
+2. `pnpm --filter @aptos-translate/contracts build` if contracts changed
+3. Restart `pnpm dev`; verify `curl localhost:3001/health/live` and web `:3000`
+4. Free port 3000 if stale Next blocks Turbo
+
+## Quality bar vs legacy v1
+
+| Must preserve | v1 mechanism | v2 location |
+|---------------|--------------|-------------|
+| Row alignment | id/ix JSON validation | `llm-response-alignment.ts` |
+| Dual LLM | translate then judge | orchestrator + Bedrock services |
+| Batch retry | whole batch on any failure | targeted sid retry (max 3 rounds) |
+| Never shrink arrays | placeholders on hard fail | alignment throw → retry |
+| Domain prompts | POS glossary + LANG_CONFIG | `prompt-builder.ts`, `lang-config.ts` |
+
+When translation quality regresses, compare behavior to `aptos-translateai/llms/gemini_llm.py` and `core/processor.py` before weakening validation.

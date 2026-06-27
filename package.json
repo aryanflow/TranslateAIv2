@@ -16,7 +16,9 @@
     "db:bootstrap": "bash scripts/db-bootstrap-local.sh",
     "db:seed": "pnpm --filter api run db:seed",
     "compose:deps": "docker compose up -d postgres redis",
-    "compose:full-deps": "docker compose --profile full up -d postgres redis minio"
+    "compose:full-deps": "docker compose --profile full up -d postgres redis minio",
+    "compose:storage": "bash scripts/minio-bootstrap-local.sh",
+    "test:e2e-file": "bash scripts/e2e-translate-file.sh"
   },
   "devDependencies": {
     "prettier": "^3.2.5",

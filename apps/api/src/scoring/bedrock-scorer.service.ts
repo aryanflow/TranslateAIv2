@@ -4,6 +4,11 @@ import { DEFAULT_BEDROCK_SCORING_MODEL_ID } from '../config/bedrock-defaults';
 import { buildScoringPrompt } from '../llm/prompt-builder';
 import { extractJsonObject } from '../llm/json-utils';
 import { BedrockConverseService } from '../llm/bedrock-converse.service';
+import {
+  assertNoDuplicateSids,
+  isAlignmentError,
+  validateScoringAlignmentStrict,
+} from '../llm/llm-response-alignment';
 
 export type ScoreBatchResult = {
   scores: number[];
@@ -118,15 +123,22 @@ export class BedrockScorerService {
         feedback.push(item.fb ?? 'Quality assessment unavailable');
       }
 
-      this.validateScoringAlignment(originals, scores, feedback, ids, parsedScores);
+      validateScoringAlignmentStrict(
+        originals,
+        scores,
+        feedback,
+        ids,
+        parsedScores,
+      );
       return { scores, feedback };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      if (isAlignmentError(msg)) {
+        this.logger.warn(`Bedrock scoring alignment rejected: ${msg}`);
+        throw e instanceof Error ? e : new Error(msg);
+      }
       this.logger.error(`Bedrock scoring failed: ${msg}`);
-      return {
-        scores: originals.map(() => 5.0),
-        feedback: originals.map(() => `Scoring failed: ${msg}`),
-      };
+      throw e instanceof Error ? e : new Error(msg);
     }
   }
 
@@ -202,6 +214,8 @@ export class BedrockScorerService {
           ? (data as { assessments: RawRow[] }).assessments
           : [];
 
+      assertNoDuplicateSids(rows, 'Scoring');
+
       for (const row of rows) {
         const a = row as Record<string, unknown>;
         const fb = this.flattenJudgeFeedback(a);
@@ -238,38 +252,4 @@ export class BedrockScorerService {
     }
   }
 
-  private validateScoringAlignment(
-    originals: string[],
-    scores: number[],
-    feedback: string[],
-    ids: number[],
-    parsed: {
-      bySid: Map<number, { ix?: number }>;
-      byLegacyId: Map<string, { ix?: number }>;
-    },
-  ): void {
-    if (
-      scores.length !== originals.length ||
-      feedback.length !== originals.length
-    ) {
-      throw new Error('Scoring count alignment failed');
-    }
-    for (let i = 0; i < originals.length; i++) {
-      const sid = ids[i];
-      const fromSid = parsed.bySid.get(sid);
-      const item = fromSid ?? parsed.byLegacyId.get(`s${i}`);
-      const itemIx = item?.ix;
-      const itemIndex = (item as { index?: number } | undefined)?.index;
-      const resolvedIx = itemIx ?? itemIndex;
-      if (
-        !fromSid &&
-        resolvedIx !== undefined &&
-        resolvedIx !== i
-      ) {
-        throw new Error(
-          `Scoring index alignment failed at batch index ${i} (legacy id s${i})`,
-        );
-      }
-    }
-  }
 }

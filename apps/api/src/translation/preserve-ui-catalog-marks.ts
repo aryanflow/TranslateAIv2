@@ -30,11 +30,34 @@ export function repairLeadingWin32Ampersand(
   return translated;
 }
 
+/**
+ * Win32/MFC menus use & before a letter (&File). Models often drop some or all.
+ * Walk source &X tokens and ensure & precedes the same letter in the translation once.
+ */
+export function repairAmpersandAccelerators(
+  source: string,
+  translated: string,
+): string {
+  let t = translated;
+  for (const m of source.matchAll(/&([^&\s])/g)) {
+    const letter = m[1]!;
+    const wanted = `&${letter}`;
+    if (t.includes(wanted)) continue;
+    const escaped = letter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?<!&)${escaped}`, 'u');
+    if (re.test(t)) {
+      t = t.replace(re, wanted);
+    }
+  }
+  return t;
+}
+
 export function preserveUiCatalogMarks(
   source: string,
   translated: string,
 ): string {
   let t = repairLatinStrSchemaToken(source, translated);
   t = repairLeadingWin32Ampersand(source, t);
+  t = repairAmpersandAccelerators(source, t);
   return t;
 }

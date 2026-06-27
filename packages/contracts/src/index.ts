@@ -22,11 +22,14 @@ export const jobExtractOptionsSchema = z
   })
   .strict();
 
+export const jobQualityModeSchema = z.enum(["full", "fast"]);
+
 export const createJobBodySchema = z.object({
   fileKey: z.string().min(1),
   sourceLang: z.string().min(2).max(32),
   targetLangs: z.array(z.string().min(2).max(32)).min(1),
   batchSize: z.coerce.number().int().min(1).max(2000).optional().default(50),
+  qualityMode: jobQualityModeSchema.optional().default("full"),
   minTranslationScore: z.coerce.number().min(0).max(1).optional(),
   maxBatchRetries: z.coerce.number().int().min(0).max(20).optional(),
   extractOptions: jobExtractOptionsSchema.optional(),

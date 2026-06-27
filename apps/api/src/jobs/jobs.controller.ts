@@ -12,6 +12,7 @@ import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -68,6 +69,11 @@ class CreateJobDto {
   @Max(2000)
   batchSize = 50;
 
+  @ApiPropertyOptional({ enum: ['full', 'fast'], default: 'full' })
+  @IsOptional()
+  @IsIn(['full', 'fast'])
+  qualityMode?: 'full' | 'fast';
+
   @ApiPropertyOptional({
     description: 'Judge threshold; below triggers re-translation',
   })
@@ -120,6 +126,7 @@ export class JobsController {
       sourceLang: body.sourceLang,
       targetLangs: body.targetLangs,
       batchSize: body.batchSize,
+      qualityMode: body.qualityMode ?? 'full',
       minTranslationScore: body.minTranslationScore,
       maxBatchRetries: body.maxBatchRetries,
       extractOptions: body.extractOptions,

@@ -3,12 +3,19 @@
  * Route handlers run on Node and can read `API_PROXY_TARGET` (not only `NEXT_PUBLIC_*`).
  */
 export function getUpstreamApiOrigin(): string | null {
-  const raw =
-    process.env.API_PROXY_TARGET ?? process.env.NEXT_PUBLIC_API_URL ?? "";
-  const trimmed = raw.trim();
-  if (trimmed) return trimmed.replace(/\/$/, "");
+  for (const envKey of ["API_PROXY_TARGET", "NEXT_PUBLIC_API_URL"] as const) {
+    const raw = process.env[envKey];
+    const trimmed = String(raw ?? "").trim();
+    if (
+      trimmed.length > 0 &&
+      trimmed !== "undefined" &&
+      trimmed !== "null"
+    ) {
+      return trimmed.replace(/\/$/, "");
+    }
+  }
   if (process.env.NODE_ENV === "development") {
-    return "http://127.0.0.1:3001";
+    return "http://localhost:3001";
   }
   return null;
 }

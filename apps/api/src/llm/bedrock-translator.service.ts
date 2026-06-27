@@ -8,6 +8,11 @@ import {
 import { extractJsonObject } from './json-utils';
 import { BedrockConverseService } from './bedrock-converse.service';
 import type { TranslationCallContext } from './translation-context';
+import {
+  assertNoDuplicateSids,
+  isAlignmentError,
+  validateTranslationAlignmentStrict,
+} from './llm-response-alignment';
 
 @Injectable()
 export class BedrockTranslatorService {
@@ -158,14 +163,16 @@ Return ONLY the JSON above.
         }
       }
 
-      this.validateTranslationAlignment(texts, translations, ids, parsed);
+      validateTranslationAlignmentStrict(texts, translations, ids, parsed);
       return translations;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      if (isAlignmentError(msg)) {
+        this.logger.warn(`Bedrock translation alignment rejected: ${msg}`);
+        throw e instanceof Error ? e : new Error(msg);
+      }
       this.logger.error(`Bedrock translation failed: ${msg}`);
-      return texts.map(
-        (t) => `[TRANSLATION_ERROR: ${t.slice(0, 50)}... - ${msg}]`,
-      );
+      throw e instanceof Error ? e : new Error(msg);
     }
   }
 
@@ -188,7 +195,9 @@ Return ONLY the JSON above.
         string,
         { id?: string; t?: string; ix?: number }
       >();
-      for (const item of data.res ?? []) {
+      const rows = data.res ?? [];
+      assertNoDuplicateSids(rows, 'Translation');
+      for (const item of rows) {
         if (item.sid != null && !Number.isNaN(Number(item.sid))) {
           bySid.set(Number(item.sid), item);
         }
@@ -200,27 +209,4 @@ Return ONLY the JSON above.
     }
   }
 
-  private validateTranslationAlignment(
-    texts: string[],
-    translations: string[],
-    ids: number[],
-    parsed: {
-      bySid: Map<number, { ix?: number }>;
-      byLegacyId: Map<string, { ix?: number }>;
-    },
-  ): void {
-    if (translations.length !== texts.length) {
-      throw new Error(
-        `Translation count alignment failed: expected ${texts.length}, got ${translations.length}`,
-      );
-    }
-    for (let i = 0; i < texts.length; i++) {
-      const sid = ids[i];
-      const fromSid = parsed.bySid.get(sid);
-      const item = fromSid ?? parsed.byLegacyId.get(`i${i}`);
-      if (!fromSid && item?.ix !== undefined && item.ix !== i) {
-        throw new Error(`Translation index alignment failed for batch index ${i} (legacy id i${i})`);
-      }
-    }
-  }
 }

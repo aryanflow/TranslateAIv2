@@ -20,7 +20,16 @@ import {
   substitutePromptVars,
   formatTerminologyReferenceBlock,
 } from '../llm/prompt-builder';
-import { preserveUiCatalogMarks } from './preserve-ui-catalog-marks';
+import {
+  applyBatchUiRepairs,
+  indicesBelowScoreThreshold,
+  mechanicalFailuresAfterRepair,
+  mergeTargetedTranslations,
+  placeholderTranslationsForIndices,
+  uniqueSortedIndices,
+} from './batch-translate-helpers';
+import { mechanicalFailureSummary } from './translation-mechanical-qa';
+import { isAlignmentError } from '../llm/llm-response-alignment';
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -79,16 +88,22 @@ class AsyncMutex {
   }
 }
 
-function contiguousDoneStrings(
+function totalDoneStrings(
   batchDone: readonly boolean[],
   batches: readonly { length: number }[],
 ): number {
   let sum = 0;
   for (let i = 0; i < batchDone.length; i++) {
-    if (!batchDone[i]) break;
-    sum += batches[i].length;
+    if (batchDone[i]) sum += batches[i]!.length;
   }
   return sum;
+}
+
+function translationProgressPercent(
+  stringsDone: number,
+  stringsTotal: number,
+): number {
+  return Math.min(95, 5 + (85 * stringsDone) / Math.max(1, stringsTotal));
 }
 
 function extForFormat(format: string): string {
@@ -188,74 +203,6 @@ function scoringAppearsDegraded(
   return feedback.some((f) => /Scoring failed:/i.test(f));
 }
 
-type ScoreRetryDiagnostics = {
-  code: 'SCORE_BELOW_THRESHOLD' | 'SCORING_DEGRADED_FALLBACK';
-  belowThresholdCount: number;
-  threshold10: number;
-  minScore: number;
-  maxScore: number;
-  avgScore: number;
-  worstSamples: { sid: number; score: number; noteSnippet: string }[];
-  summaryLine: string;
-};
-
-function buildScoreRetryDiagnostics(args: {
-  stringIds: readonly number[];
-  scores: readonly number[];
-  feedback: readonly string[];
-  threshold10: number;
-}): ScoreRetryDiagnostics {
-  const degraded = scoringAppearsDegraded(args.scores, args.feedback);
-  const code: ScoreRetryDiagnostics['code'] = degraded
-    ? 'SCORING_DEGRADED_FALLBACK'
-    : 'SCORE_BELOW_THRESHOLD';
-
-  const belowIdx: number[] = [];
-  let sum = 0;
-  let minS = Infinity;
-  let maxS = -Infinity;
-  for (let i = 0; i < args.scores.length; i++) {
-    const s = args.scores[i]!;
-    sum += s;
-    minS = Math.min(minS, s);
-    maxS = Math.max(maxS, s);
-    if (s < args.threshold10) belowIdx.push(i);
-  }
-  const avg = args.scores.length ? sum / args.scores.length : 0;
-  const worstSamples = belowIdx
-    .map((i) => ({
-      sid: args.stringIds[i]!,
-      score: args.scores[i]!,
-      noteSnippet: (args.feedback[i] ?? '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 160),
-    }))
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 5);
-
-  const summaryLine = degraded
-    ? 'Judge call failed or returned unusable JSON — neutral 5.0 scores used; batch will be re-translated.'
-    : `${belowIdx.length}/${args.scores.length} strings under judge threshold ${args.threshold10} (min ${minS === Infinity ? '—' : minS.toFixed(1)} · avg ${avg.toFixed(2)} · max ${maxS === -Infinity ? '—' : maxS.toFixed(1)})`;
-
-  return {
-    code,
-    belowThresholdCount: belowIdx.length,
-    threshold10: args.threshold10,
-    minScore: minS === Infinity ? 0 : minS,
-    maxScore: maxS === -Infinity ? 0 : maxS,
-    avgScore: avg,
-    worstSamples,
-    summaryLine,
-  };
-}
-
-function truncateForLog(s: string, max: number): string {
-  const t = s.trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}…`;
-}
-
 /** Streams from S3 → extract → batched dual-LLM → regenerate → S3 (see docs/ARCHITECTURE.md). */
 @Injectable()
 export class TranslationOrchestratorService {
@@ -313,8 +260,15 @@ export class TranslationOrchestratorService {
     const translatorKind = normalizeTranslatorId(job.tenant.activeTranslator);
     const scorerKind = normalizeScorerId(job.tenant.activeScorer);
 
-    const maxRetries = Math.max(1, job.maxBatchRetries ?? 3);
+    const maxSidRounds = Math.min(
+      3,
+      Math.max(1, job.maxBatchRetries ?? 3),
+    );
     const batchSize = Math.max(1, job.batchSize);
+    const targetedChunkSize = Math.max(
+      5,
+      Math.min(15, Math.floor(batchSize / 3) || 10),
+    );
 
     const translatorModelId =
       this.config.get<string>('BEDROCK_TRANSLATION_MODEL_ID') ??
@@ -477,35 +431,32 @@ export class TranslationOrchestratorService {
                 `job=${jobId.slice(0, 8)} · ${targetLang} · batch ${localIdx + 1}/${batches.length} (index #${gBatchIdx + 1}) — started`,
               );
 
-              let attempt = 0;
-              let trans: string[] = [];
-              /** Rich retry line + optional SSE fields, shown on the *next* attempt's progress event (avoids duplicate log lines). */
-              let pendingAttemptPublish: {
-                detail: string;
-                extra?: Record<string, unknown>;
-              } | null = null;
+              const translateCtx = {
+                administratorSystemPrompt: tmpl.systemText,
+                administratorUserTemplate: userTemplateFilled,
+                batchSourceLang: job.sourceLang,
+                batchSourceLangDisplayName: sourceCfg?.name ?? job.sourceLang,
+              };
 
-              while (attempt < maxRetries) {
-                attempt += 1;
-
+              const publishBatchEvent = async (
+                detail: string,
+                extra?: Record<string, unknown>,
+              ) => {
                 await progressMu.run(async () => {
                   if (await this.isJobCancelled(jobId)) {
                     throw new JobCancelledError();
                   }
-                  const contiguous = contiguousDoneStrings(
+                  const stringsDone = totalDoneStrings(
                     batchDoneFlags,
                     batches,
                   );
-                  const pct =
-                    5 +
-                    (85 * contiguous) /
-                      Math.max(1, extracted.originals.length);
+                  const pct = translationProgressPercent(
+                    stringsDone,
+                    extracted.originals.length,
+                  );
                   const progressed = await this.updateJobUnlessCancelled(
                     jobId,
-                    {
-                      status: attempt === 1 ? 'translating' : 'scoring',
-                      progress: Math.min(95, pct),
-                    },
+                    { status: 'translating', progress: Math.min(95, pct) },
                   );
                   if (!progressed && (await this.isJobCancelled(jobId))) {
                     await this.events.publish(jobId, {
@@ -514,223 +465,281 @@ export class TranslationOrchestratorService {
                     });
                     throw new JobCancelledError();
                   }
-                  if (!progressed) {
-                    throw new JobSilentAbort();
-                  }
-                  const phase: 'translating' | 'scoring' =
-                    attempt === 1 ? 'translating' : 'scoring';
-                  const fromPending = pendingAttemptPublish;
-                  if (fromPending) {
-                    pendingAttemptPublish = null;
-                  }
-                  const detail =
-                    attempt === 1
-                      ? `${targetLang}: batch ${localIdx + 1}/${batches.length} started`
-                      : fromPending?.detail ??
-                        `${targetLang}: batch ${localIdx + 1}/${batches.length} · translate attempt ${attempt}/${maxRetries}`;
+                  if (!progressed) throw new JobSilentAbort();
                   await this.events.publish(jobId, {
-                    phase,
+                    phase: 'translating',
                     detail,
-                    stringsDone: contiguous,
+                    stringsDone,
                     stringsTotal: extracted.originals.length,
                     targetLang,
                     batchIndex: gBatchIdx,
-                    attempt,
                     percent: Math.round(pct),
-                    ...(fromPending?.extra ?? {}),
+                    ...extra,
                   });
                 });
+              };
 
-                if (await this.isJobCancelled(jobId)) {
-                  throw new JobCancelledError();
-                }
-
-                trans = await this.translationRouter.translate(
+              const translateSlice = async (
+                texts: readonly string[],
+                ids: readonly number[],
+              ): Promise<string[]> => {
+                if (!texts.length) return [];
+                return this.translationRouter.translate(
                   translatorKind,
-                  batch,
+                  [...texts],
                   targetLang,
-                  {
-                    administratorSystemPrompt: tmpl.systemText,
-                    administratorUserTemplate: userTemplateFilled,
-                    batchSourceLang: job.sourceLang,
-                    batchSourceLangDisplayName:
-                      sourceCfg?.name ?? job.sourceLang,
-                    batchStringIds: stringIdSlice,
-                  },
+                  { ...translateCtx, batchStringIds: [...ids] },
                 );
-                trans = trans.map((t, bi) =>
-                  preserveUiCatalogMarks(batch[bi] ?? '', t),
-                );
+              };
 
-                if (await this.isJobCancelled(jobId)) {
-                  throw new JobCancelledError();
+              /** Full batch first; on alignment failure split into smaller chunks (never fail the job). */
+              const translateBatchResilient = async (): Promise<string[]> => {
+                try {
+                  return applyBatchUiRepairs(
+                    batch,
+                    await translateSlice(batch, stringIdSlice),
+                  );
+                } catch (firstErr) {
+                  const msg =
+                    firstErr instanceof Error
+                      ? firstErr.message
+                      : String(firstErr);
+                  if (!isAlignmentError(msg)) throw firstErr;
+                  this.logger.warn(
+                    `job=${jobId.slice(0, 8)} · batch ${localIdx + 1} full-batch alignment miss — retry once: ${msg}`,
+                  );
+                  try {
+                    return applyBatchUiRepairs(
+                      batch,
+                      await translateSlice(batch, stringIdSlice),
+                    );
+                  } catch (secondErr) {
+                    const msg2 =
+                      secondErr instanceof Error
+                        ? secondErr.message
+                        : String(secondErr);
+                    this.logger.warn(
+                      `job=${jobId.slice(0, 8)} · batch ${localIdx + 1} split translate (${targetedChunkSize}/chunk): ${msg2}`,
+                    );
+                    const out: string[] = [];
+                    for (let s = 0; s < batch.length; s += targetedChunkSize) {
+                      const texts = batch.slice(s, s + targetedChunkSize);
+                      const ids = stringIdSlice.slice(
+                        s,
+                        s + targetedChunkSize,
+                      );
+                      const idxList = texts.map((_, j) => s + j);
+                      try {
+                        const part = applyBatchUiRepairs(
+                          texts,
+                          await translateSlice(texts, ids),
+                        );
+                        out.push(...part);
+                      } catch (chunkErr) {
+                        const cm =
+                          chunkErr instanceof Error
+                            ? chunkErr.message
+                            : String(chunkErr);
+                        this.logger.warn(
+                          `job=${jobId.slice(0, 8)} · batch ${localIdx + 1} chunk ${s}–${s + texts.length} failed: ${cm}`,
+                        );
+                        out.push(
+                          ...placeholderTranslationsForIndices(
+                            batch,
+                            idxList,
+                            stringIdSlice,
+                            'alignment',
+                          ),
+                        );
+                      }
+                    }
+                    return out;
+                  }
+                }
+              };
+
+              await publishBatchEvent(
+                `${targetLang}: batch ${localIdx + 1}/${batches.length} · translating ${batch.length} strings`,
+              );
+
+              if (await this.isJobCancelled(jobId)) {
+                throw new JobCancelledError();
+              }
+
+              let trans = await translateBatchResilient();
+              let totalAttempts = 1;
+              let scores: number[] = batch.map(() => 5.0);
+              let feedback: string[] = batch.map(
+                () => 'Pending quality review',
+              );
+
+              for (let sidRound = 0; sidRound <= maxSidRounds; sidRound++) {
+                trans = applyBatchUiRepairs(batch, trans);
+
+                try {
+                  const scored = await this.scoring.score(
+                    scorerKind,
+                    batch,
+                    trans,
+                    targetLang,
+                    tags,
+                    { stringIds: stringIdSlice },
+                  );
+                  scores = scored.scores;
+                  feedback = scored.feedback;
+                } catch (scoreErr) {
+                  const msg =
+                    scoreErr instanceof Error
+                      ? scoreErr.message
+                      : String(scoreErr);
+                  this.logger.warn(
+                    `job=${jobId.slice(0, 8)} · batch ${localIdx + 1} judge error (accepting best effort): ${msg}`,
+                  );
+                  scores = batch.map(() => 5.0);
+                  feedback = batch.map(() => `Scoring skipped: ${msg.slice(0, 120)}`);
+                  break;
                 }
 
-                const scoreTags =
-                  extracted.format === 'json' ? undefined : tags;
-                const scored = await this.scoring.score(
-                  scorerKind,
+                const mechFails = mechanicalFailuresAfterRepair(
                   batch,
                   trans,
-                  targetLang,
-                  scoreTags,
-                  {
-                    stringIds: stringIdSlice,
-                  },
+                  stringIdSlice,
                 );
-                const scores = scored.scores;
-                const feedback = scored.feedback;
-                const below = scores.filter((s) => s < threshold10).length;
-                const degradedJudge = scoringAppearsDegraded(scores, feedback);
-                const batchLastError =
-                  below > 0
-                    ? degradedJudge
-                      ? 'SCORING_FAILED'
-                      : 'SCORE_LOW'
-                    : null;
+                const belowIdx = indicesBelowScoreThreshold(
+                  scores,
+                  threshold10,
+                );
+                const failIdx = uniqueSortedIndices([
+                  ...belowIdx,
+                  ...mechFails.map((f) => f.index),
+                ]);
 
-                await this.prisma.jobBatch.upsert({
-                  where: {
-                    jobId_batchIndex: { jobId, batchIndex: gBatchIdx },
-                  },
-                  create: {
-                    jobId,
-                    tenantId: job.tenantId,
-                    batchIndex: gBatchIdx,
-                    attempt,
-                    judgeScore: scores.length
-                      ? scores.reduce((a, b) => a + b, 0) / scores.length
-                      : null,
-                    lastErrorCode: batchLastError,
-                  },
-                  update: {
-                    attempt,
-                    judgeScore: scores.length
-                      ? scores.reduce((a, b) => a + b, 0) / scores.length
-                      : null,
-                    lastErrorCode: batchLastError,
-                  },
-                });
-
-                if (below === 0 || attempt >= maxRetries) {
-                  if (below > 0 && attempt >= maxRetries) {
-                    const diag = buildScoreRetryDiagnostics({
-                      stringIds: stringIdSlice,
-                      scores,
-                      feedback,
-                      threshold10,
-                    });
+                if (failIdx.length === 0 || sidRound >= maxSidRounds) {
+                  if (failIdx.length > 0 && sidRound >= maxSidRounds) {
                     this.logger.warn(
-                      [
-                        `job=${jobId.slice(0, 8)} · ${targetLang} · batch ${localIdx + 1}/${batches.length} (index #${gBatchIdx + 1})`,
-                        `accepting batch after max retries (${maxRetries}) with ${diag.belowThresholdCount} strings still below ${diag.threshold10}`,
-                        `reason=${diag.code}`,
-                        diag.summaryLine,
-                      ].join(' — '),
+                      `job=${jobId.slice(0, 8)} · batch ${localIdx + 1} accepting ${failIdx.length} imperfect string(s) after ${maxSidRounds} targeted round(s)`,
                     );
                   }
-                  const qaSlice: QaRow[] = [];
-                  for (let bi = 0; bi < batch.length; bi++) {
-                    qaSlice.push({
-                      string_id: stringIdSlice[bi]!,
-                      source_path: tags[bi]!,
-                      original: batch[bi]!,
-                      translation: trans[bi]!,
-                      reviewer_score_0_to_10: scores[bi]!,
-                      reviewer_notes: feedback[bi]!,
-                      meets_accuracy_threshold: scores[bi]! >= threshold10,
-                      translator_attempt_number: attempt,
-                    });
-                  }
-
-                  await progressMu.run(async () => {
-                    batchDoneFlags[localIdx] = true;
-                    if (await this.isJobCancelled(jobId)) {
-                      throw new JobCancelledError();
-                    }
-                    const contiguous = contiguousDoneStrings(
-                      batchDoneFlags,
-                      batches,
-                    );
-                    const pct =
-                      5 +
-                      (85 * contiguous) /
-                        Math.max(1, extracted.originals.length);
-                    await this.updateJobUnlessCancelled(jobId, {
-                      status: 'translating',
-                      progress: Math.min(95, pct),
-                    });
-                    await this.events.publish(jobId, {
-                      phase: 'translating',
-                      detail: `${targetLang}: batch ${localIdx + 1}/${batches.length} completed · ${batch.length} strings · attempt ${attempt}`,
-                      stringsDone: contiguous,
-                      stringsTotal: extracted.originals.length,
-                      targetLang,
-                      batchIndex: gBatchIdx,
-                      attempt,
-                      percent: Math.round(pct),
-                    });
-                  });
-
-                  this.logger.log(
-                    `job=${jobId.slice(0, 8)} · ${targetLang} · batch ${localIdx + 1}/${batches.length} (index #${gBatchIdx + 1}) — completed (${batch.length} strings, attempt ${attempt})`,
-                  );
-
-                  return { translations: trans, qaSlice };
+                  break;
                 }
 
-                if (attempt < maxRetries) {
-                  const diag = buildScoreRetryDiagnostics({
-                    stringIds: stringIdSlice,
-                    scores,
-                    feedback,
-                    threshold10,
-                  });
-                  const samples =
-                    diag.worstSamples.length > 0
-                      ? diag.worstSamples
-                          .map(
-                            (w) =>
-                              `#${w.sid}=${w.score.toFixed(1)}:${truncateForLog(w.noteSnippet, 100)}`,
-                          )
-                          .join(' | ')
-                      : '(no per-row samples)';
+                const failSids = failIdx.map((i) => stringIdSlice[i]!);
+                const mechSummary = mechanicalFailureSummary(mechFails);
+                await publishBatchEvent(
+                  `${targetLang}: batch ${localIdx + 1}/${batches.length} · re-translating ${failIdx.length}/${batch.length} string(s) (round ${sidRound + 1}/${maxSidRounds})${mechSummary ? ` · ${mechSummary}` : ''}`,
+                  {
+                    retryReason: 'TARGETED',
+                    targetedCount: failIdx.length,
+                    worstStringIds: failSids.slice(0, 20),
+                  },
+                );
+
+                const subOrig = failIdx.map((i) => batch[i]!);
+                const subIds = failIdx.map((i) => stringIdSlice[i]!);
+                try {
+                  const subTrans = applyBatchUiRepairs(
+                    subOrig,
+                    await translateSlice(subOrig, subIds),
+                  );
+                  trans = mergeTargetedTranslations(
+                    batch,
+                    trans,
+                    failIdx,
+                    subTrans,
+                  );
+                  totalAttempts += 1;
+                } catch (targetErr) {
+                  const msg =
+                    targetErr instanceof Error
+                      ? targetErr.message
+                      : String(targetErr);
                   this.logger.warn(
-                    [
-                      `job=${jobId.slice(0, 8)} · ${targetLang} · batch ${localIdx + 1}/${batches.length} (index #${gBatchIdx + 1})`,
-                      `translator re-run: next attempt ${attempt + 1}/${maxRetries}`,
-                      `reason=${diag.code}`,
-                      diag.summaryLine,
-                      `samples: ${samples}`,
-                    ].join(' — '),
+                    `job=${jobId.slice(0, 8)} · batch ${localIdx + 1} targeted translate failed (keeping prior text): ${msg}`,
                   );
-                  const nextAttempt = attempt + 1;
-                  const shortWhy =
-                    diag.code === 'SCORING_DEGRADED_FALLBACK'
-                      ? 'judge error, neutral scores'
-                      : diag.summaryLine;
-                  const sseDetail = truncateForLog(
-                    `${targetLang}: batch ${localIdx + 1}/${batches.length} · translate attempt ${nextAttempt}/${maxRetries} after low judge scores (${diag.code}) · ${shortWhy}`,
-                    420,
-                  );
-                  pendingAttemptPublish = {
-                    detail: sseDetail,
-                    extra: {
-                      retryReason: diag.code,
-                      belowThresholdCount: diag.belowThresholdCount,
-                      judgeThreshold10: diag.threshold10,
-                      judgeMin: diag.minScore,
-                      judgeMax: diag.maxScore,
-                      judgeAvg: Math.round(diag.avgScore * 100) / 100,
-                      worstStringIds: diag.worstSamples.map((w) => w.sid),
-                    },
-                  };
+                  break;
                 }
               }
 
-              throw new Error(
-                `Batch ${localIdx} (${targetLang}) exhausted retries without a terminal state`,
+              const below = scores.filter((s) => s < threshold10).length;
+              const degradedJudge = scoringAppearsDegraded(scores, feedback);
+              const batchLastError =
+                below > 0
+                  ? degradedJudge
+                    ? 'SCORING_FAILED'
+                    : 'SCORE_LOW'
+                  : null;
+
+              await this.prisma.jobBatch.upsert({
+                where: {
+                  jobId_batchIndex: { jobId, batchIndex: gBatchIdx },
+                },
+                create: {
+                  jobId,
+                  tenantId: job.tenantId,
+                  batchIndex: gBatchIdx,
+                  attempt: totalAttempts,
+                  judgeScore: scores.length
+                    ? scores.reduce((a, b) => a + b, 0) / scores.length
+                    : null,
+                  lastErrorCode: batchLastError,
+                },
+                update: {
+                  attempt: totalAttempts,
+                  judgeScore: scores.length
+                    ? scores.reduce((a, b) => a + b, 0) / scores.length
+                    : null,
+                  lastErrorCode: batchLastError,
+                },
+              });
+
+              const qaSlice: QaRow[] = [];
+              for (let bi = 0; bi < batch.length; bi++) {
+                qaSlice.push({
+                  string_id: stringIdSlice[bi]!,
+                  source_path: tags[bi]!,
+                  original: batch[bi]!,
+                  translation: trans[bi]!,
+                  reviewer_score_0_to_10: scores[bi]!,
+                  reviewer_notes: feedback[bi]!,
+                  meets_accuracy_threshold: scores[bi]! >= threshold10,
+                  translator_attempt_number: totalAttempts,
+                });
+              }
+
+              await progressMu.run(async () => {
+                batchDoneFlags[localIdx] = true;
+                if (await this.isJobCancelled(jobId)) {
+                  throw new JobCancelledError();
+                }
+                const stringsDone = totalDoneStrings(
+                  batchDoneFlags,
+                  batches,
+                );
+                const pct = translationProgressPercent(
+                  stringsDone,
+                  extracted.originals.length,
+                );
+                await this.updateJobUnlessCancelled(jobId, {
+                  status: 'translating',
+                  progress: pct,
+                });
+                await this.events.publish(jobId, {
+                  phase: 'translating',
+                  detail: `${targetLang}: batch ${localIdx + 1}/${batches.length} completed · ${batch.length} strings`,
+                  stringsDone,
+                  stringsTotal: extracted.originals.length,
+                  targetLang,
+                  batchIndex: gBatchIdx,
+                  attempt: totalAttempts,
+                  percent: Math.round(pct),
+                });
+              });
+
+              this.logger.log(
+                `job=${jobId.slice(0, 8)} · ${targetLang} · batch ${localIdx + 1}/${batches.length} — completed (${batch.length} strings, ${totalAttempts} translate pass(es))`,
               );
+
+              return { translations: trans, qaSlice };
             },
           );
         } catch (e) {
