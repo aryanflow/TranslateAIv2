@@ -17,6 +17,12 @@ import {
   readUpstreamErrorBody,
 } from "@/lib/dev-api";
 import { isActiveJobStatus, sseToFriendlyLine } from "@/lib/job-events";
+import {
+  applyJobPipelineEvent,
+  INITIAL_PIPELINE_STATE,
+  type PipelineViewState,
+} from "@/lib/job-pipeline-state";
+import { JobPipelineVisualizer } from "@/components/jobs/JobPipelineVisualizer";
 import { upstreamFetch } from "@/lib/upstream-fetch";
 import { phaseLabel } from "@/components/jobs/job-visual-utils";
 import type { ReactNode } from "react";
@@ -161,6 +167,7 @@ type JobPollState = {
   id: string;
   status: string;
   progress: number;
+  createdAt?: string;
   batchesCompleted?: number;
   batchTotal?: number | null;
   stringsTotal?: number | null;
@@ -311,6 +318,7 @@ export function TranslateWizardShell() {
 
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobLive, setJobLive] = useState<JobPollState | null>(null);
+  const [pipeline, setPipeline] = useState<PipelineViewState>(INITIAL_PIPELINE_STATE);
   const [jobStallHint, setJobStallHint] = useState<string | null>(null);
 
   const lastProgressRef = useRef({ value: -1, atMs: Date.now() });
@@ -475,6 +483,7 @@ export function TranslateWizardShell() {
     setIngestPhase("idle");
     setActiveJobId(null);
     setJobLive(null);
+    setPipeline(INITIAL_PIPELINE_STATE);
     setCsvSelectedColumns([]);
     setCsvColumnBusy(false);
 
@@ -573,6 +582,7 @@ export function TranslateWizardShell() {
           id: string;
           status: string;
           progress: number;
+          createdAt?: string;
           batchesCompleted?: number;
           batchTotal?: number | null;
           stringsTotal?: number | null;
@@ -585,6 +595,7 @@ export function TranslateWizardShell() {
           id: data.id,
           status: data.status,
           progress: data.progress,
+          createdAt: data.createdAt ?? prev?.createdAt,
           batchesCompleted: data.batchesCompleted,
           batchTotal: data.batchTotal,
           stringsTotal: data.stringsTotal,
@@ -592,6 +603,18 @@ export function TranslateWizardShell() {
           judgePassScoreMin01: data.judgePassScoreMin01,
           minTranslationScoreStored: data.minTranslationScoreStored,
           latestDetail: prev?.latestDetail,
+        }));
+        setPipeline((prev) => ({
+          ...prev,
+          percent: data.progress,
+          stringsTotal: data.stringsTotal ?? prev.stringsTotal,
+          macroPhase:
+            data.status === "completed" ||
+            data.status === "failed" ||
+            data.status === "cancelled"
+              ? (data.status as PipelineViewState["macroPhase"])
+              : (data.status as PipelineViewState["macroPhase"]) || prev.macroPhase,
+          batchCount: data.batchTotal ?? prev.batchCount,
         }));
         if (data.progress !== lastProgressRef.current.value) {
           lastProgressRef.current = { value: data.progress, atMs: Date.now() };
@@ -625,6 +648,7 @@ export function TranslateWizardShell() {
           lastProgressRef.current = { value: payload.percent, atMs: Date.now() };
           setJobStallHint(null);
         }
+        setPipeline((prev) => applyJobPipelineEvent(prev, payload));
         setJobLive((prev) =>
           prev
             ? {
@@ -633,6 +657,16 @@ export function TranslateWizardShell() {
                   typeof payload.percent === "number"
                     ? payload.percent
                     : prev.progress,
+                status:
+                  typeof payload.phase === "string" &&
+                  payload.phase !== "event" &&
+                  isActiveJobStatus(payload.phase)
+                    ? payload.phase
+                    : prev.status,
+                stringsTotal:
+                  typeof payload.stringsTotal === "number"
+                    ? payload.stringsTotal
+                    : prev.stringsTotal,
                 latestDetail: message,
               }
             : prev,
@@ -729,10 +763,12 @@ export function TranslateWizardShell() {
       setActiveJobId(created.jobId);
       lastProgressRef.current = { value: 0, atMs: Date.now() };
       setJobStallHint(null);
+      setPipeline(INITIAL_PIPELINE_STATE);
       setJobLive({
         id: created.jobId,
         status: "pending",
         progress: 0,
+        createdAt: new Date().toISOString(),
       });
     } catch (e) {
       setError(formatApiError(e));
@@ -1217,10 +1253,24 @@ export function TranslateWizardShell() {
                 </span>
               </div>
               <ProgressBar value={jobLive.progress} />
+              {jobLive.status !== "completed" &&
+              jobLive.status !== "failed" &&
+              jobLive.status !== "cancelled" ? (
+                <div className="mt-4">
+                  <JobPipelineVisualizer
+                    pipeline={pipeline}
+                    jobStatus={jobLive.status}
+                    progress={jobLive.progress}
+                    createdAt={jobLive.createdAt ?? new Date().toISOString()}
+                    variant="compact"
+                  />
+                </div>
+              ) : null}
               {jobLive.latestDetail &&
               jobLive.status !== "completed" &&
               jobLive.status !== "failed" &&
-              jobLive.status !== "cancelled" ? (
+              jobLive.status !== "cancelled" &&
+              pipeline.activeBatchIndices.length === 0 ? (
                 <p className="mt-2 text-[12px] leading-snug text-[var(--muted)]">
                   {jobLive.latestDetail}
                 </p>

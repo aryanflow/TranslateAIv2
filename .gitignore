@@ -50,6 +50,9 @@ Thumbs.db
 .vercel/
 *.local
 
+# Local CRM team assets (not for repo)
+CRM Team/
+
 # Terraform
 .terraform/
 *.tfstate

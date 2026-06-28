@@ -21,6 +21,14 @@ import {
   tenantOnlyHeaders,
 } from "@/lib/dev-api";
 import { langLabel } from "@/lib/lang-options";
+import { sseToFriendlyLine } from "@/lib/job-events";
+import {
+  applyJobPipelineEvent,
+  INITIAL_PIPELINE_STATE,
+  type PipelineViewState,
+} from "@/lib/job-pipeline-state";
+import { JobPipelineVisualizer } from "@/components/jobs/JobPipelineVisualizer";
+import { estimateEtaSeconds, formatDurationSeconds } from "@/components/jobs/job-visual-utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -135,60 +143,9 @@ type FilePreviewPanelState =
   | { kind: "iframe"; title: string; url: string }
   | { kind: "error"; title: string; message: string };
 
-function sseToFriendlyLine(payload: Record<string, unknown>): { message: string; tone: LogTone } {
-  const phase = typeof payload.phase === "string" ? payload.phase : "event";
-
-  switch (phase) {
-    case "pending":
-      return { message: "Queued", tone: "muted" };
-    case "extracting":
-      return { message: "Catalogue read", tone: "muted" };
-    case "chunking":
-      return { message: "Batch dispatched", tone: "muted" };
-    case "translating": {
-      const detail =
-        typeof payload.detail === "string" ? payload.detail.trim() : "";
-      if (detail) return { message: detail, tone: "info" };
-      const bi = typeof payload.batchIndex === "number" ? payload.batchIndex : undefined;
-      return {
-        message: bi !== undefined ? `Translating · batch ${bi + 1}` : "Translating",
-        tone: "info",
-      };
-    }
-    case "scoring": {
-      const detail =
-        typeof payload.detail === "string" ? payload.detail.trim() : "";
-      if (detail) return { message: detail, tone: "info" };
-      const bi = typeof payload.batchIndex === "number" ? payload.batchIndex : undefined;
-      return {
-        message: bi !== undefined ? `Quality review · batch ${bi + 1}` : "Quality review",
-        tone: "info",
-      };
-    }
-    case "regenerating":
-      return { message: "Building deliverables", tone: "muted" };
-    case "completed":
-      return { message: "Completed", tone: "success" };
-    case "failed": {
-      const err =
-        typeof payload.error === "string"
-          ? payload.error
-          : "Something went wrong";
-      return {
-        message: err.length > 120 ? `${err.slice(0, 117)}…` : err,
-        tone: "danger",
-      };
-    }
-    case "cancelled":
-      return { message: "Cancelled", tone: "warn" };
-    default:
-      return { message: phaseLabelNeutral(phase), tone: "info" };
-  }
-}
-
-function phaseLabelNeutral(slug: string) {
-  if (!slug) return "Update";
-  return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/_/g, " ");
+function sseToLogLine(payload: Record<string, unknown>): { message: string; tone: LogTone } {
+  const mapped = sseToFriendlyLine(payload);
+  return { message: mapped.message, tone: mapped.tone as LogTone };
 }
 
 function DocIcon({ className }: { className?: string }) {
@@ -237,6 +194,7 @@ export function JobDetailView({ jobId }: { jobId: string }) {
   const [qaMean, setQaMean] = useState<number | null>(null);
   const [qaLoading, setQaLoading] = useState(false);
   const [log, setLog] = useState<LogRow[]>([]);
+  const [pipeline, setPipeline] = useState<PipelineViewState>(INITIAL_PIPELINE_STATE);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewSearch, setReviewSearch] = useState("");
   const [idCopied, setIdCopied] = useState(false);
@@ -330,6 +288,18 @@ export function JobDetailView({ jobId }: { jobId: string }) {
     if (!res.ok) throw new Error(await readUpstreamErrorBody(res));
     const data = (await res.json()) as JobDetailApi;
     setJob(data);
+    setPipeline((prev) => ({
+      ...prev,
+      percent: data.progress,
+      stringsTotal: data.stringsTotal ?? prev.stringsTotal,
+      batchCount: data.batchTotal ?? prev.batchCount,
+      macroPhase:
+        data.status === "completed" ||
+        data.status === "failed" ||
+        data.status === "cancelled"
+          ? (data.status as PipelineViewState["macroPhase"])
+          : (data.status as PipelineViewState["macroPhase"]) || prev.macroPhase,
+    }));
     setLoadError(null);
   }, [tenantOk, jobId]);
 
@@ -448,7 +418,8 @@ export function JobDetailView({ jobId }: { jobId: string }) {
     es.onmessage = (ev) => {
       try {
         const payload = JSON.parse(ev.data as string) as Record<string, unknown>;
-        const { message, tone } = sseToFriendlyLine(payload);
+        const { message, tone } = sseToLogLine(payload);
+        setPipeline((prev) => applyJobPipelineEvent(prev, payload));
         const atMs =
           typeof payload.ts === "number"
             ? payload.ts
@@ -603,6 +574,14 @@ export function JobDetailView({ jobId }: { jobId: string }) {
     ? job.uploadFileLabel ?? job.fileKey?.split("/").pop() ?? "—"
     : "—";
 
+  const etaSec = job
+    ? estimateEtaSeconds({
+        progress: job.progress,
+        createdAt: job.createdAt,
+        status: job.status,
+      })
+    : null;
+
   const lastEntryPulsesDot = Boolean(active && displayLog.length > 0);
 
   return (
@@ -684,7 +663,9 @@ export function JobDetailView({ jobId }: { jobId: string }) {
               {" · "}
               {terminal
                 ? formatDurationApprox(job.createdAt, job.updatedAt)
-                : "Running"}
+                : etaSec != null
+                  ? `~${formatDurationSeconds(etaSec)} remaining`
+                  : "Running"}
               {" · "}
               {qaMean != null && job.status === "completed"
                 ? `Avg. score ${qaMean.toFixed(1)} / 10`
@@ -692,6 +673,21 @@ export function JobDetailView({ jobId }: { jobId: string }) {
               {" · "}
               {`${job.retriedBatchCount ?? 0} retried`}
             </div>
+
+            {active ? (
+              <div
+                className="mt-8 rounded-lg border p-4 sm:p-5"
+                style={{ borderColor: JD.border, background: JD.rowWash }}
+              >
+                <JobPipelineVisualizer
+                  pipeline={pipeline}
+                  jobStatus={job.status}
+                  progress={job.progress}
+                  createdAt={job.createdAt}
+                  variant="full"
+                />
+              </div>
+            ) : null}
 
             {active ? (
               <div className="mt-8 overflow-hidden bg-[#141414]">

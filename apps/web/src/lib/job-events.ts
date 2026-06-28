@@ -11,14 +11,50 @@ export function sseToFriendlyLine(payload: Record<string, unknown>): {
   tone: JobEventTone;
 } {
   const phase = typeof payload.phase === "string" ? payload.phase : "event";
+  const batchStep =
+    typeof payload.batchStep === "string" ? payload.batchStep.trim() : "";
+  const batchLocal =
+    typeof payload.batchLocalIndex === "number"
+      ? payload.batchLocalIndex + 1
+      : typeof payload.batchIndex === "number"
+        ? payload.batchIndex + 1
+        : undefined;
+
+  if (batchStep) {
+    const batchPrefix = batchLocal != null ? `Batch ${batchLocal}` : "Batch";
+    switch (batchStep) {
+      case "translate_sending":
+        return { message: `${batchPrefix} · sending to translator`, tone: "info" };
+      case "translate_waiting":
+        return { message: `${batchPrefix} · translator responding…`, tone: "info" };
+      case "judge_sending":
+        return { message: `${batchPrefix} · sending to reviewer`, tone: "info" };
+      case "judge_waiting":
+        return { message: `${batchPrefix} · reviewer scoring…`, tone: "info" };
+      case "judge_done":
+        return { message: `${batchPrefix} · review scored`, tone: "info" };
+      case "retrying":
+        return { message: `${batchPrefix} · retrying low-score strings`, tone: "warn" };
+      case "done":
+        return { message: `${batchPrefix} · completed`, tone: "success" };
+      case "queued":
+        return { message: `${batchPrefix} · queued`, tone: "muted" };
+      default:
+        break;
+    }
+  }
 
   switch (phase) {
     case "pending":
       return { message: "Queued", tone: "muted" };
     case "extracting":
       return { message: "Reading catalogue", tone: "muted" };
-    case "chunking":
-      return { message: "Planning batches", tone: "muted" };
+    case "chunking": {
+      const detail =
+        typeof payload.detail === "string" ? payload.detail.trim() : "";
+      if (detail) return { message: detail, tone: "info" };
+      return { message: "Breaking into batches", tone: "info" };
+    }
     case "translating": {
       const detail =
         typeof payload.detail === "string" ? payload.detail.trim() : "";

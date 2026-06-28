@@ -291,7 +291,12 @@ export class TranslationOrchestratorService {
       if (!progressed) {
         return;
       }
-      await this.events.publish(jobId, { phase: 'extracting', percent: 2 });
+      await this.events.publish(jobId, {
+        phase: 'extracting',
+        percent: 2,
+        detail: 'Reading catalogue from storage…',
+        ts: Date.now(),
+      });
 
       const buf = await this.files.getObjectBytes(job.fileKey);
       if (await this.isJobCancelled(jobId)) {
@@ -325,8 +330,13 @@ export class TranslationOrchestratorService {
       }
       await this.events.publish(jobId, {
         phase: 'chunking',
+        detail: `Split ${extracted.originals.length} strings into ${batches.length} batch${batches.length === 1 ? '' : 'es'} (up to ${batchSize} per batch)`,
         stringsTotal: extracted.originals.length,
+        batchCount: batches.length,
+        batchSizes: batches.map((b) => b.length),
+        batchSize,
         percent: 5,
+        ts: Date.now(),
       });
       const resultUrls: string[] = [];
       let globalBatchIndex = 0;
@@ -440,8 +450,15 @@ export class TranslationOrchestratorService {
 
               const publishBatchEvent = async (
                 detail: string,
-                extra?: Record<string, unknown>,
+                opts?: {
+                  phase?: 'translating' | 'scoring';
+                  batchStep?: string;
+                  jobStatus?: 'translating' | 'scoring';
+                  extra?: Record<string, unknown>;
+                },
               ) => {
+                const phase = opts?.phase ?? 'translating';
+                const jobStatus = opts?.jobStatus ?? phase;
                 await progressMu.run(async () => {
                   if (await this.isJobCancelled(jobId)) {
                     throw new JobCancelledError();
@@ -456,25 +473,31 @@ export class TranslationOrchestratorService {
                   );
                   const progressed = await this.updateJobUnlessCancelled(
                     jobId,
-                    { status: 'translating', progress: Math.min(95, pct) },
+                    { status: jobStatus, progress: Math.min(95, pct) },
                   );
                   if (!progressed && (await this.isJobCancelled(jobId))) {
                     await this.events.publish(jobId, {
                       phase: 'cancelled',
                       percent: Math.round(pct),
+                      ts: Date.now(),
                     });
                     throw new JobCancelledError();
                   }
                   if (!progressed) throw new JobSilentAbort();
                   await this.events.publish(jobId, {
-                    phase: 'translating',
+                    phase,
+                    batchStep: opts?.batchStep,
                     detail,
                     stringsDone,
                     stringsTotal: extracted.originals.length,
                     targetLang,
                     batchIndex: gBatchIdx,
+                    batchLocalIndex: localIdx,
+                    batchTotal: batches.length,
+                    stringCount: batch.length,
                     percent: Math.round(pct),
-                    ...extra,
+                    ts: Date.now(),
+                    ...opts?.extra,
                   });
                 });
               };
@@ -559,12 +582,22 @@ export class TranslationOrchestratorService {
               };
 
               await publishBatchEvent(
-                `${targetLang}: batch ${localIdx + 1}/${batches.length} · translating ${batch.length} strings`,
+                `Batch ${localIdx + 1}/${batches.length} · sending ${batch.length} strings to translator`,
+                {
+                  batchStep: 'translate_sending',
+                },
               );
 
               if (await this.isJobCancelled(jobId)) {
                 throw new JobCancelledError();
               }
+
+              await publishBatchEvent(
+                `Batch ${localIdx + 1}/${batches.length} · translator responding…`,
+                {
+                  batchStep: 'translate_waiting',
+                },
+              );
 
               let trans = await translateBatchResilient();
               let totalAttempts = 1;
@@ -575,6 +608,26 @@ export class TranslationOrchestratorService {
 
               for (let sidRound = 0; sidRound <= maxSidRounds; sidRound++) {
                 trans = applyBatchUiRepairs(batch, trans);
+
+                await publishBatchEvent(
+                  sidRound === 0
+                    ? `Batch ${localIdx + 1}/${batches.length} · sending to quality reviewer`
+                    : `Batch ${localIdx + 1}/${batches.length} · re-review after retry (round ${sidRound})`,
+                  {
+                    phase: 'scoring',
+                    batchStep: 'judge_sending',
+                    jobStatus: 'scoring',
+                  },
+                );
+
+                await publishBatchEvent(
+                  `Batch ${localIdx + 1}/${batches.length} · reviewer scoring ${batch.length} strings…`,
+                  {
+                    phase: 'scoring',
+                    batchStep: 'judge_waiting',
+                    jobStatus: 'scoring',
+                  },
+                );
 
                 try {
                   const scored = await this.scoring.score(
@@ -599,6 +652,23 @@ export class TranslationOrchestratorService {
                   feedback = batch.map(() => `Scoring skipped: ${msg.slice(0, 120)}`);
                   break;
                 }
+
+                const avgScore =
+                  scores.length > 0
+                    ? scores.reduce((a, b) => a + b, 0) / scores.length
+                    : null;
+                await publishBatchEvent(
+                  `Batch ${localIdx + 1}/${batches.length} · reviewer scored · avg ${avgScore != null ? avgScore.toFixed(1) : '—'}/10`,
+                  {
+                    phase: 'scoring',
+                    batchStep: 'judge_done',
+                    jobStatus: 'scoring',
+                    extra: {
+                      judgeScoreAvg: avgScore,
+                      reviewRound: sidRound,
+                    },
+                  },
+                );
 
                 const mechFails = mechanicalFailuresAfterRepair(
                   batch,
@@ -626,17 +696,27 @@ export class TranslationOrchestratorService {
                 const failSids = failIdx.map((i) => stringIdSlice[i]!);
                 const mechSummary = mechanicalFailureSummary(mechFails);
                 await publishBatchEvent(
-                  `${targetLang}: batch ${localIdx + 1}/${batches.length} · re-translating ${failIdx.length}/${batch.length} string(s) (round ${sidRound + 1}/${maxSidRounds})${mechSummary ? ` · ${mechSummary}` : ''}`,
+                  `Batch ${localIdx + 1}/${batches.length} · retrying ${failIdx.length}/${batch.length} string(s) (round ${sidRound + 1}/${maxSidRounds})${mechSummary ? ` · ${mechSummary}` : ''}`,
                   {
-                    retryReason: 'TARGETED',
-                    targetedCount: failIdx.length,
-                    worstStringIds: failSids.slice(0, 20),
+                    batchStep: 'retrying',
+                    extra: {
+                      retryReason: 'TARGETED',
+                      targetedCount: failIdx.length,
+                      worstStringIds: failSids.slice(0, 20),
+                      reviewRound: sidRound + 1,
+                    },
                   },
                 );
 
                 const subOrig = failIdx.map((i) => batch[i]!);
                 const subIds = failIdx.map((i) => stringIdSlice[i]!);
                 try {
+                  await publishBatchEvent(
+                    `Batch ${localIdx + 1}/${batches.length} · translator retry (${failIdx.length} strings)…`,
+                    {
+                      batchStep: 'translate_waiting',
+                    },
+                  );
                   const subTrans = applyBatchUiRepairs(
                     subOrig,
                     await translateSlice(subOrig, subIds),
@@ -725,13 +805,18 @@ export class TranslationOrchestratorService {
                 });
                 await this.events.publish(jobId, {
                   phase: 'translating',
-                  detail: `${targetLang}: batch ${localIdx + 1}/${batches.length} completed · ${batch.length} strings`,
+                  batchStep: 'done',
+                  detail: `Batch ${localIdx + 1}/${batches.length} completed · ${batch.length} strings`,
                   stringsDone,
                   stringsTotal: extracted.originals.length,
                   targetLang,
                   batchIndex: gBatchIdx,
+                  batchLocalIndex: localIdx,
+                  batchTotal: batches.length,
+                  stringCount: batch.length,
                   attempt: totalAttempts,
                   percent: Math.round(pct),
+                  ts: Date.now(),
                 });
               });
 
@@ -799,8 +884,10 @@ export class TranslationOrchestratorService {
         }
         await this.events.publish(jobId, {
           phase: 'regenerating',
+          detail: `Building ${targetLang} deliverable file…`,
           targetLang,
           percent: 92,
+          ts: Date.now(),
         });
 
         const reg = this.regenerators.regenerate({
