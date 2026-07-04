@@ -2,6 +2,10 @@
 
 Aptos Translate AI v2 monorepo.
 
+![Aptos Translate v2 — web app](docs/screenshots/preview.png)
+
+**New machine?** Start here → **[GETTING_STARTED.md](GETTING_STARTED.md)**
+
 | Document | Audience |
 |----------|----------|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Engineers — stack blueprint & module map |
